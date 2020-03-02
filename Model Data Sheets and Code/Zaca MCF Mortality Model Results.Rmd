@@ -1,0 +1,874 @@
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F,
+                      warning = F,
+                      message = F)
+```
+
+### Load data and packages
+```{r}
+library(randomForest)
+library(pdp)
+library(caret)
+library(tidyverse)
+library(ggpubr)
+library(caret)
+library(stringr)
+library(here)
+library(janitor)
+library(ggfortify)
+
+mcf <- read.csv('Zaca MCF variables for model.csv') %>% 
+  select('drainage_assoication', 'ridge', 'mortality', 
+         'prefire','mortality_qual', 'canopy_loss_success', 
+         'canopy_loss_failure', 'postfire_canopy', 'postfire', 
+         'Change_in_canopy_success', 'Change_in_canopy_failure', 
+         'Change_Qualitative','high_mortality', 'area_scaled', 
+         'dem_10m_zaca', 'flow_accumulation', 'sr', 'sr_new', 
+         'rain', 'slope', 'tmax', 'tmean', 'tmin', 'TPI_five', 
+         'TPI_queen', 'TWI', 'fri', 'dem_scaled', 'southness', "cwd", "vpd_jan", "vpd_aug" ) 
+ #mutate(mortality_qual= fct_relevel(mortality_qual, levels=c("None", "Low", "Moderate", "High")))
+ # keep getting error (Outer names are only allowed for unnamed scalar atomic inputs) when order the levels, but the reordering works anyway (although it doesnt work with the ssame error in the binomial code. The code directly below works to reorder the levels without error)
+mcf$mortality_qual  <- factor(mcf$mortality_qual, levels = c("None", "Low", "Moderate", "High"))
+ 
+
+```
+
+### Sample Size for each mortality class
+```{r}
+mortality_count <- mcf %>% 
+  group_by(mortality_qual) %>% 
+  count()
+  
+```
+
+
+### Data Spread
+
+```{r}
+solar_rad_mcf <- ggplot(mcf, aes(x=mortality_qual, y=sr, fill=mortality_qual))+
+  geom_violin(alpha=0.5, show.legend=F) +
+  theme_classic() +
+  labs(x="Mortality", y="Solar Radiation") +
+  scale_fill_manual(values=c("red", "orange", "yellow", "green")) +
+  coord_flip()
+
+tmax_mcf <- ggplot(mcf, aes(x=mortality_qual, y=tmax, fill=mortality_qual))+
+  geom_violin(alpha=0.5, show.legend=F) +
+  theme_classic() +
+  labs(x="Mortality", y="Max Aug Temp (celcius)") +
+  scale_fill_manual(values=c("red", "orange", "yellow", "green")) +
+  coord_flip()
+
+rain_mcf <- ggplot(mcf, aes(x=mortality_qual, y=rain, fill=mortality_qual))+
+  geom_violin(alpha=0.5, show.legend=F) +
+  theme_classic() +
+  labs(x="Mortality", y="Precipitation") +
+  scale_fill_manual(values=c("red", "orange", "yellow", "green")) +
+  coord_flip()
+
+tpi_mcf <- ggplot(mcf, aes(x=mortality_qual, y=TPI_five, fill=mortality_qual))+
+  geom_violin(alpha=0.5, show.legend=F) +
+  theme_classic() +
+  labs(x="Mortality", y="TPI") +
+  scale_fill_manual(values=c("red", "orange", "yellow", "green")) +
+  coord_flip()
+
+twi_mcf <- ggplot(mcf, aes(x=mortality_qual, y=TWI, fill=mortality_qual))+
+  geom_violin(alpha=0.5, show.legend=F) +
+  theme_classic() +
+  labs(x="Mortality", y="TWI") +
+  scale_fill_manual(values=c("red", "orange", "yellow", "green")) +
+  coord_flip()
+
+slope_mcf <- ggplot(mcf, aes(x=mortality_qual, y=slope, fill=mortality_qual))+
+  geom_violin(alpha=0.5, show.legend=F) +
+  theme_classic() +
+  labs(x="Mortality", y="Slope") +
+  scale_fill_manual(values=c("red", "orange", "yellow", "green")) +
+  coord_flip()
+
+elev_mcf <- ggplot(mcf, aes(x=mortality_qual, y=dem_10m_zaca, fill=mortality_qual))+
+  geom_violin(alpha=0.5, show.legend=F) +
+  theme_classic() +
+  labs(x="Mortality", y="Elevation") +
+  scale_fill_manual(values=c("red", "orange", "yellow", "green")) +
+  coord_flip()
+
+cwd_mcf <- ggplot(mcf, aes(x=mortality_qual, y=cwd, fill=mortality_qual))+
+  geom_violin(alpha=0.5, show.legend=F) +
+  theme_classic() +
+  labs(x="Mortality", y="CWD") +
+  scale_fill_manual(values=c("red", "orange", "yellow", "green")) +
+  coord_flip()
+
+aug_vpd_mcf <- ggplot(mcf, aes(x=mortality_qual, y=vpd_aug, fill=mortality_qual))+
+  geom_violin(alpha=0.5, show.legend=F) +
+  theme_classic() +
+  labs(x="Mortality", y="Aug VPD") +
+  scale_fill_manual(values=c("red", "orange", "yellow", "green")) +
+  coord_flip()
+
+jan_vpd_mcf <- ggplot(mcf, aes(x=mortality_qual, y=vpd_jan, fill=mortality_qual))+
+  geom_violin(alpha=0.5, show.legend=F) +
+  theme_classic() +
+  labs(x="Mortality", y="Jan VPD") +
+  scale_fill_manual(values=c("red", "orange", "yellow", "green")) +
+  coord_flip()
+
+ggarrange(solar_rad_mcf, rain_mcf, slope_mcf, elev_mcf, tmax_mcf, tpi_mcf, twi_mcf, cwd_mcf, aug_vpd_mcf, jan_vpd_mcf)
+#ggsave("zaca MCF most important variable violin plots.png")
+```
+
+Most distinction between classes in slope, elevation, and solar radiation. Could explain why those variables tend to have the highest variable importance. 
+Interestingly, stands with higher elevation had higher mortality and stands with steeper slope and higher max temp had lower/no mortality. Both of which are counter-intuitive. 
+
+### PCA
+
+```{r}
+#sub-data
+mcf_sub <- mcf %>% 
+  select (dem_10m_zaca:sr, rain:tmax, TPI_five, TWI, cwd:vpd_jan)
+
+mcf_sub_pca <- prcomp(mcf_sub, scale = T)
+
+#summary
+summary(mcf_sub_pca)
+mcf_sub_pca
+
+#plot
+mcf_sub_pca_plot <- autoplot(mcf_sub_pca, 
+                          colour = NA, # HAVE to spell it color this way (colour) 
+                          loadings.label = T,
+                          loadings.label.size = 3,
+                          loadings.label.colour = "black",
+                          loadings.label.repel = T) +
+  scale_y_continuous(lim=c(-0.1, 0.15)) +
+  labs(title = "Zaca Fire MCF PCA")
+
+mcf_sub_pca_plot
+
+```
+
+
+### Random Forest
+
+Which variables contribute to mortality?
+
+Literature review:
+
+```{r}
+# model parameters---------------------------------------------
+
+# set sample size 
+nsample = 125
+
+# lists to save outputs from for loop
+test_accuracy_list <- list()
+
+```
+
+
+```{r}
+
+#random forest code---------------------------------------------------
+for (i in 1:500)
+{
+  
+  # divide data into equal # of observations --------------------
+  
+  mcf_high <- mcf[which(mcf$mortality_qual == "High"),]
+  mcf_low <- mcf[which(mcf$mortality_qual == "Low"),]
+  mcf_moderate <- mcf[which(mcf$mortality_qual == "Moderate"),]
+  mcf_none <- mcf[which(mcf$mortality_qual == "None"),]
+  
+  # pull random observations from the high class and separate
+  x_high <- sample(1:nrow(mcf_high), nsample , replace = FALSE)
+  polygon_data_high_train <- mcf_high[x_high,]
+  polygon_data_high_test <- mcf_high[-x_high,]
+  # pull random observations from the low class and separate
+  x_low <- sample(1:nrow(mcf_low), nsample , replace = FALSE)
+  polygon_data_low_train <- mcf_low[x_low,]
+  polygon_data_low_test <- mcf_low[-x_low,]
+  # pull random observations from the moderate class and separate
+  x_moderate <- sample(1:nrow(mcf_moderate), nsample , replace = FALSE)
+  polygon_data_moderate_train <- mcf_moderate[x_moderate,]
+  polygon_data_moderate_test <- mcf_moderate[-x_moderate,]
+  # pull random observations from the none class and separate
+  x_none <- sample(1:nrow(mcf_none), nsample , replace = FALSE)
+  polygon_data_none_train <- mcf_none[x_none,]
+  polygon_data_none_test <- mcf_none[-x_none,]
+  
+  # combine all random observations
+  train <- do.call("rbind", list(polygon_data_none_train, polygon_data_low_train, polygon_data_moderate_train, polygon_data_high_train))
+  # recombine classes that were not pulled
+  test <- do.call("rbind", list(polygon_data_none_test, polygon_data_low_test, polygon_data_moderate_test, polygon_data_high_test))
+  
+  #random forest model
+  rfm<-randomForest(mortality_qual~ rain + tmax + TPI_five + dem_10m_zaca + flow_accumulation + sr + slope + TWI, data = train, ntree=500, importance=T, nscale=0)
+  
+  #plot to visualize variable importance
+  #varImpPlot(rfm)
+  model_importance <- importance(rfm)
+
+  #predcit test data
+  pp<-predict(rfm, test)
+  
+  #test data accuracy
+  tabb<- table(pp, test$mortality_qual)
+  acc<-1-sum(diag(tabb))/sum(tabb) #% missclassified 
+  test_accuracy <-(1-acc)*100 #model accuracy
+  
+  # lists to save model outputs
+  test_accuracy_list <- append(test_accuracy_list, test_accuracy)
+  write.table(model_importance, file="rfm model importance.csv", sep=",",col.names=NA, append=T) 
+  write.table(tabb, file = "mcf test accuracy table.csv", sep=",",col.names=NA, append=T)
+}
+
+
+```
+
+Note: when running the model, have to remember to delete the rfm model importance.csv and mcf test accuracy table.csv files otherwise R will keep adding the values onto the orignial file and not make a new one for each model succession. I've been doing that or renaming the file, but maybe theres an easier method
+
+#### Model Results
+```{r}
+
+# overall average model accuracy -----------------------------------------------------
+
+accuracy_df <- as.data.frame(unlist(test_accuracy_list))
+mean_test_accuracy_1 <- accuracy_df %>% 
+  mutate(test_accuracy_list = as.numeric(test_accuracy_list)) %>% 
+  summarize(mean_accuracy = mean(unlist(test_accuracy_list)))
+
+
+#average model importance ---------------------------------------------------------
+
+model_importance_tidy <- read_csv(here("Model Data Sheets and Code", "rfm model importance.csv")) %>% 
+  clean_names() %>% 
+  filter(none != "None") %>% 
+  rename (variables = x1) %>% 
+  mutate (variables = str_to_lower(variables)) %>% 
+  mutate (none = as.numeric(none),
+          low = as.numeric(low),
+          moderate = as.numeric(moderate),
+          high = as.numeric(high),
+          mean_decrease_accuracy = as.numeric(mean_decrease_accuracy),
+          mean_decrease_gini = as.numeric(mean_decrease_gini)
+          )
+
+# model importance summary statistics
+model_importance_summary <- model_importance_tidy %>% 
+  group_by(variables) %>% 
+  summarize (none_mean = mean(none),
+             low_mean = mean(low),
+             moderate_mean = mean(moderate),
+             high_mean = mean(high),
+             mean_dec_accuracy_mean = mean(mean_decrease_accuracy),
+             mean_decrease_gini_mean = mean(mean_decrease_gini)
+  )
+
+# average class accuracy ---------------------------------------------------------
+
+high <- read_csv("mcf test accuracy table.csv")
+moderate <- read_csv("mcf test accuracy table.csv") 
+low <- read_csv("mcf test accuracy table.csv")
+none <- read_csv("mcf test accuracy table.csv")
+
+high_mean_acc <- high %>% 
+  select (X1, High) %>% 
+  drop_na() %>% 
+  filter (X1 == "High") %>% 
+  mutate (High = as.numeric(High),
+          class_acc = High / 33) %>% 
+  summarise(mean = mean(class_acc))
+
+moderate_mean_acc <- moderate %>% 
+  select (X1, Moderate) %>% 
+  drop_na() %>% 
+  filter (X1 == "Moderate") %>%
+  mutate (Moderate = as.numeric(Moderate),
+          class_acc = Moderate / 35)%>% 
+  summarise(mean = mean(class_acc))
+
+low_mean_acc <- low %>% 
+  select (X1, Low) %>% 
+  drop_na() %>% 
+  filter (X1 == "Low") %>%
+  mutate (Low = as.numeric(Low),
+          class_acc = Low / 41) %>% 
+  summarise(mean = mean(class_acc))
+
+none_mean_acc <- none %>% 
+  select (X1, None) %>% 
+  drop_na() %>% 
+  filter (X1 == "None") %>%
+  mutate (Low = as.numeric(None),
+          class_acc = Low / 126) %>% 
+  summarise(mean = mean(class_acc))
+
+```
+
+
+### Random Forest Model with 3 mortality classes
+
+No and low mortality are pretty similar and both would be ideal for land managers. 
+
+```{r}
+# model parameters and sub data -----------------------------------------------------------
+
+# sub data 
+mcf_3 <- mcf %>%
+  mutate(three_class_mortality = case_when(
+    mortality_qual %in% "High" ~ "High",
+    mortality_qual %in% "Moderate" ~ "Moderate",
+    mortality_qual %in% c("Low", "None") ~ "Low"
+  )) %>% 
+  mutate(three_class_mortality = as.factor(three_class_mortality)) %>% 
+  mutate(three_class_mortality= fct_relevel(three_class_mortality, 
+                                     levels=c("Low", "Moderate", "High")))
+
+# set sample size 
+nsample1 = 125
+
+# lists to save outputs from for loop
+test_accuracy_list <- list()
+```
+
+
+```{r}
+
+#random forest code---------------------------------------------------
+for (i in 1:500)
+{
+  
+  # divide data into equal # of observations --------------------
+  
+  mcf_high <- mcf_3[which(mcf_3$three_class_mortality == "High"),]
+  mcf_low <- mcf_3[which(mcf_3$three_class_mortality == "Low"),]
+  mcf_moderate <- mcf_3[which(mcf_3$three_class_mortality == "Moderate"),]
+  
+  # pull random observations from the high class and separate
+  x_high <- sample(1:nrow(mcf_high), nsample1 , replace = FALSE)
+  polygon_data_high_train <- mcf_high[x_high,]
+  polygon_data_high_test <- mcf_high[-x_high,]
+  # pull random observations from the low class and separate
+  x_low <- sample(1:nrow(mcf_low), nsample1 , replace = FALSE)
+  polygon_data_low_train <- mcf_low[x_low,]
+  polygon_data_low_test <- mcf_low[-x_low,]
+  # pull random observations from the moderate class and separate
+  x_moderate <- sample(1:nrow(mcf_moderate), nsample1 , replace = FALSE)
+  polygon_data_moderate_train <- mcf_moderate[x_moderate,]
+  polygon_data_moderate_test <- mcf_moderate[-x_moderate,]
+
+  # combine all random observations
+  train <- do.call("rbind", list(polygon_data_low_train, polygon_data_moderate_train, polygon_data_high_train))
+  # recombine classes that were not pulled
+  test <- do.call("rbind", list(polygon_data_low_test, polygon_data_moderate_test, polygon_data_high_test))
+  
+  #random forest model
+  rfm<-randomForest(three_class_mortality~ rain + tmax + TPI_five + dem_10m_zaca + flow_accumulation + sr + slope + TWI, data = train, ntree=500, importance=T, nscale=0)
+
+  #plot to visualize variable importance
+  model_importance <- importance(rfm)
+  
+  #varImpPlot(rfm)
+  
+  #predcit test data
+  pp<-predict(rfm, test)
+  
+  #test data accuracy
+  tabb<- table(pp, test$three_class_mortality)
+  acc<-1-sum(diag(tabb))/sum(tabb) #% missclassified
+  test_accuracy <-(1-acc)*100 #model accuracy
+  
+  # lists to save model accuracys
+  test_accuracy_list <- append(test_accuracy_list, test_accuracy)
+  write.table(model_importance, file="rfm model importance_3 class mortality.csv", sep=",",col.names=NA, append=T) 
+  write.table(tabb, file = "mcf test accuracy table_3 class mortality.csv", sep=",",col.names=NA, append=T)
+  
+}
+
+```
+
+#### Model Results
+```{r}
+
+# overall average model accuracy -----------------------------------------------------
+
+accuracy_df <- as.data.frame(unlist(test_accuracy_list))
+mean_test_accuracy_1 <- accuracy_df %>% 
+  summarize(mean_accuracy = mean(unlist(test_accuracy_list)))
+
+#average model importance ---------------------------------------------------------
+
+model_importance_tidy <- read_csv(here("Model Data Sheets and Code", "rfm model importance_3 class mortality.csv")) %>% 
+  clean_names() %>% 
+  filter(low != "Low") %>% 
+  rename (variables = x1) %>% 
+  mutate (variables = str_to_lower(variables)) %>% 
+  mutate (low = as.numeric(low),
+          moderate = as.numeric(moderate),
+          high = as.numeric(high),
+          mean_decrease_accuracy = as.numeric(mean_decrease_accuracy),
+          mean_decrease_gini = as.numeric(mean_decrease_gini)
+          )
+
+# model importance summary statistics
+model_importance_summary <- model_importance_tidy %>% 
+  group_by(variables) %>% 
+  summarize (low_mean = mean(low),
+             moderate_mean = mean(moderate),
+             high_mean = mean(high),
+             mean_dec_accuracy_mean = mean(mean_decrease_accuracy),
+             mean_decrease_gini_mean = mean(mean_decrease_gini)
+  )
+
+# average class accuracy ---------------------------------------------------------
+
+high <- read_csv("mcf test accuracy table_3 class mortality.csv") 
+moderate <- read_csv("mcf test accuracy table_3 class mortality.csv")
+low <- read_csv("mcf test accuracy table_3 class mortality.csv")  
+
+high_mean_acc <- high %>% 
+  select (X1, High) %>% 
+  drop_na() %>% 
+  filter (X1 == "High") %>% 
+  mutate (High = as.numeric(High),
+          class_acc = High / 33) %>% 
+  summarise(mean = mean(class_acc))
+
+moderate_mean_acc <- moderate %>% 
+  select (X1, Moderate) %>% 
+  drop_na() %>% 
+  filter (X1 == "Moderate") %>%
+  mutate (Moderate = as.numeric(Moderate),
+          class_acc = Moderate / 35)%>% 
+  summarise(mean = mean(class_acc))
+
+low_mean_acc <- low %>% 
+  select (X1, Low) %>% 
+  drop_na() %>% 
+  filter (X1 == "Low") %>%
+  mutate (Low = as.numeric(Low),
+          class_acc = Low / 292) %>% 
+  summarise(mean = mean(class_acc))
+
+
+```
+
+
+### Random Forest via Cross Validation
+
+code from:  https://www.youtube.com/watch?v=84JSk36og34
+
+```{r}
+# model parameters---------------------------------------------
+
+# set sample size 
+nsample2 = 125
+```
+
+```{r}
+
+# equal number of observations
+  mcf_high <- mcf[which(mcf$mortality_qual == "High"),]
+  mcf_low <- mcf[which(mcf$mortality_qual == "Low"),]
+  mcf_moderate <- mcf[which(mcf$mortality_qual == "Moderate"),]
+  mcf_none <- mcf[which(mcf$mortality_qual == "None"),]
+  
+  # pull random observations from the high class and separate
+  x_high <- sample(1:nrow(mcf_high), nsample2 , replace = FALSE)
+  polygon_data_high_train <- mcf_high[x_high,]
+  polygon_data_high_test <- mcf_high[-x_high,]
+  # pull random observations from the low class and separate
+  x_low <- sample(1:nrow(mcf_low), nsample2 , replace = FALSE)
+  polygon_data_low_train <- mcf_low[x_low,]
+  polygon_data_low_test <- mcf_low[-x_low,]
+  # pull random observations from the moderate class and separate
+  x_moderate <- sample(1:nrow(mcf_moderate), nsample2 , replace = FALSE)
+  polygon_data_moderate_train <- mcf_moderate[x_moderate,]
+  polygon_data_moderate_test <- mcf_moderate[-x_moderate,]
+  # pull random observations from the none class and separate
+  x_none <- sample(1:nrow(mcf_none), nsample2 , replace = FALSE)
+  polygon_data_none_train <- mcf_none[x_none,]
+  polygon_data_none_test <- mcf_none[-x_none,]
+  
+  # combine all random observations
+  train <- do.call("rbind", list(polygon_data_none_train, polygon_data_low_train, polygon_data_moderate_train, polygon_data_high_train))
+  # recombine classes that were not pulled
+  test <- do.call("rbind", list(polygon_data_none_test, polygon_data_low_test, polygon_data_moderate_test, polygon_data_high_test))
+# make sure y variable is recgonized as a factor
+mortality_qual <- as.factor(mcf$mortality_qual)
+
+#add explanatory variables to a single data frame
+explantory_variables <- mcf %>% 
+  select(rain, tmax,TPI_five,dem_10m_zaca,flow_accumulation,sr,slope,TWI)
+
+# create folds
+folds <-  createMultiFolds(mortality_qual, k=10, times=10)
+
+# train Control
+control <- trainControl(method = "repeatedcv", number = 10, repeats = 10, index = folds, savePredictions = T)
+
+# cross validation model for random forest
+rf.cv <- train(x= explantory_variables, y=mortality_qual, method="rf", tuneLength = 2, ntree=500, trControl=control)
+
+# summary statistics
+rf.cv
+```
+
+Accuracy pretty much the same without using cross validation. 
+
+### Chris' modified binomial model (original code??)
+
+
+```{r, eval = F, echo = F}
+#Prepare data
+all_env_variables <- brick(stack(list.files(path = "E:/zaca/environmental_data/all_variables/stack", full.names = TRUE)))
+pine <- shapefile("E:/zaca/chris/ground_truth/all_mixed_pine", stringsAsFactors = TRUE)
+all_env_variables <- crop(all_env_variables, extent(pine))
+environment_extract <- raster::extract(all_env_variables, pine, method = "simple", fun = mean, na.rm = TRUE, sp = TRUE)
+
+env_df <- as.data.frame(environment_extract) %>% 
+  filter(prefire != 0) %>% 
+  mutate(dem_scaled = dem_10m_zaca/1000, insolation_scaled = insolation_10m_zaca/100000, tmean_scaled = tmean_10m_zaca/10, southness = abs(180 - aspect_10m_zaca), precip_mm = rain_10m_zaca/100) %>% 
+  mutate(postfire_success = as.numeric(as.character(car::recode(postfire, "'0' = 0; '1_25' = 125; '25_75' = 500; '75_100' = 875")))) %>% 
+  mutate(postfire_failure = 1000 - postfire_success) %>% 
+  droplevels(.)
+
+env_df$prefire <- relevel(env_df$prefire, ref = "75_100")
+
+blr <- glm(cbind(postfire_success, postfire_failure) ~ TPI_five_10m_zaca + insolation_scaled + prefire, family = binomial(link = "logit"), data = env_df)
+
+blr
+
+#ifelse(condition, yes, no)
+# example ifelse code to get probabilities
+class.out <- ifelse(prob < 0.25, "None", 
+                    ifelse(prob < 0.5, "Low", 
+                           ifelse(...)))
+
+table(class.out, actual.classes)
+```
+
+### Chris' modified binomial model (modified by amp): 4 classes
+
+
+```{r}
+# model parameters---------------------------------------------
+
+# set sample size 
+nsample4 = 125
+
+# lists to save outputs from for loop
+test_accuracy_list <- list()
+```
+
+
+```{r}
+
+# for loop binomial model -----------------------------------------------------------------
+
+for (i in 1:100) {
+# train and test data 
+  mcf_high <- mcf[which(mcf$mortality_qual == "High"),]
+  mcf_low <- mcf[which(mcf$mortality_qual == "Low"),]
+  mcf_moderate <- mcf[which(mcf$mortality_qual == "Moderate"),]
+  mcf_none <- mcf[which(mcf$mortality_qual == "None"),]
+  
+  # pull random observations from the high class and separate
+  x_high <- sample(1:nrow(mcf_high), nsample4 , replace = FALSE)
+  polygon_data_high_train <- mcf_high[x_high,]
+  polygon_data_high_test <- mcf_high[-x_high,]
+  # pull random observations from the low class and separate
+  x_low <- sample(1:nrow(mcf_low), nsample4 , replace = FALSE)
+  polygon_data_low_train <- mcf_low[x_low,]
+  polygon_data_low_test <- mcf_low[-x_low,]
+  # pull random observations from the moderate class and separate
+  x_moderate <- sample(1:nrow(mcf_moderate), nsample4 , replace = FALSE)
+  polygon_data_moderate_train <- mcf_moderate[x_moderate,]
+  polygon_data_moderate_test <- mcf_moderate[-x_moderate,]
+  # pull random observations from the none class and separate
+  x_none <- sample(1:nrow(mcf_none), nsample4 , replace = FALSE)
+  polygon_data_none_train <- mcf_none[x_none,]
+  polygon_data_none_test <- mcf_none[-x_none,]
+  
+  # combine all random observations
+  train <- do.call("rbind", list(polygon_data_none_train, polygon_data_low_train, polygon_data_moderate_train,  polygon_data_high_train)) 
+  # recombine classes that were not pulled
+  test <- do.call("rbind", list(polygon_data_none_test, polygon_data_low_test, polygon_data_moderate_test, polygon_data_high_test))
+  
+#model
+blr <- glm(cbind(canopy_loss_success, canopy_loss_failure) ~ dem_10m_zaca + rain + prefire + slope + TPI_five, family = binomial(link = "logit"), data = train)
+
+#model outputs
+blr
+summary(blr)
+
+#predict 
+prob <- predict(blr, newdata = test, type = "response")
+
+# ifelse code to get probabilities
+class_out <- ifelse(prob < 0.25, "None", 
+                    ifelse(prob < 0.5, "Low", 
+                           ifelse(prob < 0.75, " Moderate", 
+                                  ifelse(prob <1, "High")))) 
+
+# convert probability outputs from vector to data frame and reorder the mortality classes. Having trouble
+model_predictions <- data.frame(class_out)
+
+write.table(model_predictions, "test.csv", sep = ",", col.names = NA, append=F)
+model_test <- read_csv(here::here("Model Data Sheets and Code", "test.csv"))
+model_test <- model_test %>% 
+  mutate(class_out = fct_relevel(class_out, levels = c("None", "Low", "Moderate", "High")))
+file.remove(here::here("Model Data Sheets and Code", "test.csv"))
+
+# test data accuracy 
+tabb <- table(Predicted = model_test$class_out, Actual = test$canopy_loss_success)
+acc<-1-sum(diag(tabb))/sum(tabb) #% missclassified
+
+write.table(model_predictions, "test.csv", sep = ",", col.names = NA, append = F)
+model_test <- read_csv(here::here("Model Data Sheets and Code", "test.csv"))
+model_test$class_out <- factor (model_test$class_out, levels = c("None", "Low", "Moderate", "High"))
+file.remove(here::here("Model Data Sheets and Code",'test.csv'))
+
+
+# test data accuracy 
+tabb <- table(Predicted = model_test$class_out, Actual = test$canopy_loss_success)
+acc<-1-sum(diag(tabb))/sum(tabb)
+acc #% missclassified
+
+test_accuracy <-(1-acc)*100 #model accuracy
+
+# lists to save model outputs
+test_accuracy_list <- append(test_accuracy_list, test_accuracy)
+write.table(tabb, file = "binomial model test accuracy table.csv", sep=",",col.names=NA, append=T)
+
+}
+
+
+```
+
+#### Model Results
+```{r}
+# model output results ---------------------------------------------------------------------------------------
+
+# average model accuracy
+accuracy_df <- as.data.frame(unlist(test_accuracy_list)) %>% 
+  summarise(accuracy_mean = mean(unlist(test_accuracy)))
+
+# average class accuracy
+high <- read_csv("binomial model test accuracy table.csv") %>%  rename("High" = "750")
+moderate <- read_csv("binomial model test accuracy table.csv")  %>%  rename("Moderate" = "500")
+low <- read_csv("binomial model test accuracy table.csv")  %>%  rename("Low" = "250")
+none <- read_csv("binomial model test accuracy table.csv") %>%  rename("None" = "0")
+
+
+high_mean_acc <- high %>% 
+  select (X1, High) %>% 
+  drop_na() %>% 
+  filter (X1 == "High") %>% 
+  mutate (High = as.numeric(High),
+          class_acc = High / 33) %>% 
+  summarise(mean = mean(class_acc))
+
+moderate_mean_acc <- moderate %>% 
+  select (X1, Moderate) %>% 
+  drop_na() %>% 
+  filter (X1 == "Moderate") %>%
+  mutate (Moderate = as.numeric(Moderate),
+          class_acc = Moderate / 35)%>% 
+  summarise(mean = mean(class_acc))
+
+low_mean_acc <- low %>% 
+  select (X1, Low) %>% 
+  drop_na() %>% 
+  filter (X1 == "Low") %>%
+  mutate (Low = as.numeric(Low),
+          class_acc = Low / 41) %>% 
+  summarise(mean = mean(class_acc))
+
+none_mean_acc <- none %>% 
+  select (X1, None) %>% 
+  drop_na() %>% 
+  filter (X1 == "None") %>%
+  mutate (None = as.numeric(None),
+          class_acc = None / 126) %>% 
+  summarise(mean = mean(class_acc))
+
+```
+
+
+Notes: 
+
+- I changed the response varaible from the difference in pre and post fire canopy cover (in your data its the postfire success/failure, in my data its the change in canopy success/failure), to fire induced canopy loss (i.e. mortality) success/failure
+
+- also split up the data into train and test data with an equal number of observations in each mortality class for the train data. The model kept confusing the mortality with low/none since none had such a higher number of observations
+
+<<<<<<< HEAD
+- I don't know why I am having so much trouble with reordering the levels of the test data predictions (after converting the list from vector data to a data frame). I keep getting this error: *Outer Names are only allowed for unnamed scalar atomic* and the fct_relevel won't actually reorder. I tried several different codes (factor, fct_relevel, fct-reorder, etc) to order the class, but the only thing that worked was exporting the data into a csv file then reimporting it back into r, then deleting the file (bc its in a for loop). fct_relevel works now. I think R just doesn't like vector data.  
+
+- ***The current issue I'm getting is when there are no accurate predictions for a mortality class(ie High), that 0 value doesnt get stored in the output table, so when I try to get the average accuracy for that mortality class I don't have a complete list of the values. Some issue with the model below***
+
+- i dont know why I am having so much trouble with converting the test data predictions into a data frame and then reordering the levels. If I get the data from to work then the factor works but moderate is registered as an NA when it wasnt before. If i use mutate fct_relevel then I get this error: fct_relvel bc keep getting this error: Outer names are only allowed for unnamed scalar atomic inputs (even when used mutate to convert the data from atomic data and is.atomic() did not register the data as atomic; use is.atomic(data_name$column_name) to check if r recognizes the data as atomic. I think this issue is occuring bc the data I'm converting to a data frame was originally vector data). Convertign the class_out to a data frame, exporting it to a csv, and then reimporting it was the only way to reorder the levels without having moderate converted to NA
+
+
+### Chris' modified binomial model (modified by amp): 3 classes-combine low and none classes
+
+```{r}
+# model parameters---------------------------------------------
+
+# set sample size 
+nsample5 = 125
+
+# sub-data: combine low and no mortality classes
+mcf_3 <- mcf %>%
+  mutate(mortality_qual_3 = case_when(
+    mortality_qual %in% c("None", "Low") ~ "Low",
+    mortality_qual == "Moderate" ~ "Moderate",
+    mortality_qual == "High" ~ "High"
+  )) %>% 
+  mutate(canopy_loss_success_3 = case_when(
+    canopy_loss_success %in% c("0", "250") ~ "250",
+    canopy_loss_success == "500" ~"500",
+    canopy_loss_success == "750" ~ "750"
+  )) %>% 
+  mutate(canopy_loss_failure_3 = case_when(
+    canopy_loss_failure %in% c("1000", "750") ~ "750",
+    canopy_loss_failure == "500" ~"500",
+    canopy_loss_failure == "250" ~ "250"
+  ))
+
+mcf_3$canopy_loss_success_3 <- factor(mcf_3$canopy_loss_success_3)
+mcf_3$canopy_loss_failure_3 <- factor(mcf_3$canopy_loss_failure_3)
+
+# lists to save outputs from for loop
+
+test_accuracy_list <- list()
+```
+
+
+```{r}
+
+# for loop binomial model -----------------------------------------------------------------
+
+for (i in 1:100) {
+# train and test data 
+  mcf_high <- mcf_3[which(mcf_3 $ mortality_qual_3 == "High"),]
+  mcf_low <- mcf_3[which(mcf_3 $ mortality_qual_3 == "Low"),]
+  mcf_moderate <- mcf_3[which(mcf_3 $ mortality_qual_3 == "Moderate"),]
+
+  # pull random observations from the high class and separate
+  x_high <- sample(1:nrow(mcf_high), nsample5, replace = FALSE)
+  polygon_data_high_train <- mcf_high[x_high,]
+  polygon_data_high_test <- mcf_high[-x_high,]
+  # pull random observations from the low class and separate
+  x_low <- sample(1:nrow(mcf_low), nsample5 , replace = FALSE)
+  polygon_data_low_train <- mcf_low[x_low,]
+  polygon_data_low_test <- mcf_low[-x_low,]
+  # pull random observations from the moderate class and separate
+  x_moderate <- sample(1:nrow(mcf_moderate), nsample5 , replace = FALSE)
+  polygon_data_moderate_train <- mcf_moderate[x_moderate,]
+  polygon_data_moderate_test <- mcf_moderate[-x_moderate,]
+
+  
+  # combine all random observations
+  train <- do.call("rbind", list(polygon_data_low_train, polygon_data_moderate_train,  polygon_data_high_train)) 
+  # recombine classes that were not pulled
+  test <- do.call("rbind", list(polygon_data_low_test, polygon_data_moderate_test, polygon_data_high_test))
+  
+#model
+blr <- glm(cbind(canopy_loss_success_3, canopy_loss_failure_3) ~ dem_10m_zaca + rain + prefire + slope + TPI_five, family = binomial(link = "logit"), data = train)
+
+#model outputs
+blr
+summary(blr)
+
+#predict 
+prob <- predict(blr, newdata = test, type = "response")
+
+# ifelse code to get probabilities
+class_out <- ifelse(prob < 0.25, "Low", 
+                     ifelse(prob < 0.75, " Moderate", 
+                             ifelse(prob <1, "High"))) 
+
+# convert probability outputs from vector to data frame and reorder the mortality classes. 
+model_predictions <- data.frame(class_out)
+
+write.table(model_predictions, "test.csv", sep = ",", col.names = NA, append=F)
+model_test <- read_csv(here::here("Model Data Sheets and Code", "test.csv"))
+model_test <- model_test %>% 
+  mutate(class_out = fct_relevel(class_out, levels = c("Low", "Moderate", "High")))
+file.remove(here::here("Model Data Sheets and Code", "test.csv"))
+
+# test data accuracy 
+tabb <- table(Predicted = model_test$class_out, Actual = test$canopy_loss_success_3)
+acc<-1-sum(diag(tabb))/sum(tabb)
+test_accuracy <-(1-acc)*100 #model accuracy
+
+# lists to save model outputs
+test_accuracy_list <- append(test_accuracy_list, test_accuracy)
+write.table(tabb, file = "binomial model test accuracy table.csv", sep=",",col.names=NA, append=T)
+
+}
+
+```
+
+#### Model Results
+```{r}
+# model output results ---------------------------------------------------------------------------------------
+
+# average model accuracy
+accuracy_df <- as.data.frame(unlist(test_accuracy_list)) %>% 
+  summarise(accuracy_mean = mean(unlist(test_accuracy)))
+
+# average class accuracy
+high <- read_csv("binomial model test accuracy table.csv") %>%  rename("High" = "750")
+moderate <- read_csv("binomial model test accuracy table.csv")  %>%  rename("Moderate" = "500")
+low <- read_csv("binomial model test accuracy table.csv")  %>%  rename("Low" = "250")
+
+high_mean_acc <- high %>% 
+  select (X1, High) %>% 
+  drop_na() %>% 
+  filter (X1 == "High") %>% 
+  mutate (High = as.numeric(High),
+          class_acc = High / 33) %>% 
+  summarise(mean = mean(class_acc))
+
+moderate_mean_acc <- moderate %>% 
+  select (X1, Moderate) %>% 
+  drop_na() %>% 
+  filter (X1 == "Moderate") %>%
+  mutate (Moderate = as.numeric(Moderate),
+          class_acc = Moderate / 35)%>% 
+  summarise(mean = mean(class_acc))
+
+low_mean_acc <- low %>% 
+  select (X1, Low) %>% 
+  drop_na() %>% 
+  filter (X1 == "Low") %>%
+  mutate (Low = as.numeric(Low),
+          class_acc = Low / 292) %>% 
+  summarise(mean = mean(class_acc))
+```
+
+
+
+
+
+### Future Models
+
+Chose the GFDL-CM3 model which is from the NOAA Geophysical Fluid Dynamics Laboratory. Wasn't sure which one to pick, but NOAA is a reputable organization. 
+
+- LOCA VIR RUN (Scripps): Has monthly data for RCP 4.5 and 8.5 for precipitation and "air temperature"" 
+- LOCA Downscaled CMIP5 Climate Projections (Scripps): daily and annual data for RCP 4.5 and 8.5 (no monthly data) for min temp, max temp, precip, solar radiation, relative humidity
+- LOCA Derived Products: mixture of things. RCP 4.5 and 8.5. No monthly data for climate variables
+
+
+
+```{r}
+
+```
+
+
+
