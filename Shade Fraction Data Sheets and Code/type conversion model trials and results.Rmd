@@ -1,0 +1,867 @@
+---
+title: "Type Conversion Model"
+author: "Anne-Marie Parkinson"
+date: "February 2, 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# load packages
+```{r}
+library(tidyverse)
+library(here)
+library(dplyr)
+library(pROC)
+library(ROCR)
+```
+
+# add data
+```{r}
+sf2 <-read_csv(here::here("Shade Fraction Data Sheets and Code", "Final Zaca MCF SF_MainData.csv")) %>% 
+  dplyr::mutate(mortality_qualitative= fct_relevel(mortality_qualitative, levels=c("None", "Low", "Moderate", "High"))) %>% 
+  dplyr::mutate(other_mortality = fct_relevel(other_mortality, levels = c("None", "Low", "Moderate", "High", "Type Converted")))
+
+gv2 <- read_csv(here::here("Shade Fraction Data Sheets and Code", "Zaca MCF variables for model_plus GV.csv")) %>% 
+  dplyr::mutate(mortality_qual= fct_relevel(mortality_qual, levels=c("None", "Low", "Moderate", "High"))) %>% 
+  rename(mortality_qualitative = mortality_qual) 
+
+```
+
+# sample size 
+```{r}
+count <- sf2 %>% 
+  group_by(new_model_class) %>% 
+  count()
+```
+
+# type conversion model trials
+
+## shade fractions: one response variable
+
+```{r}
+# make lists to later store values
+acc_list <- list()
+table_values <- list()
+model_aic <-list()
+auc_list <- list ()
+#prediction_list <- list()
+
+#type conversion model ------------------------------------
+for (i in 1:500)
+  {
+  #divide the response variable into equal number of observations
+  tc_yes <- sf2[which(sf2$new_model_class == "1"),]
+  tc_no <- sf2[which(sf2$new_model_class == "0"),]
+  
+  # pull 175 random observations from the high class and separate
+  yes <- sample(1:nrow(tc_yes), 99 , replace = FALSE)
+  polygon_data_high_train <- tc_yes[yes,]
+  # pull 175 random observations from the low class and separate
+  no <- sample(1:nrow(tc_no), 99 , replace = FALSE)
+  polygon_data_low_train <- tc_no[no,]
+  
+  # combine all random observations
+  train <- do.call("rbind", list(polygon_data_high_train, polygon_data_low_train))
+  
+  tc <- glm(new_model_class~shade_2018, data=train, family="binomial")
+  sum <-summary(tc)
+  sum
+  aic<- sum$aic
+  aic
+  model_aic <- append(model_aic, aic)
+  
+  # predict data 
+  pred<-predict(tc, train, type="response") 
+  
+  # error rate for data
+  pred1 <- ifelse (pred>0.5,1,0)
+  tab<- table(Predicted=pred1, Actual=train$new_model_class)
+  write.table(tab, file = "type conversion train response variable accuracy.csv", sep=",",col.names=NA, append=T)
+
+  acc <-1-sum(diag(tab))/sum(tab)   #error calculation. gives % observations predicted incorrectly 
+  acc <- 1- acc 
+  acc_list <- append(acc_list, acc)
+  
+  #auc score
+  pred <- predict(tc,train)
+  pred1 <-prediction(pred, train$new_model_class)
+  roc <- performance(pred1, "tpr", "fpr")
+  auc <-performance(pred1, "auc")
+  auc1 <- unlist(slot(auc, "y.values"))
+  auc_list <- append(auc_list, auc1)
+  
+}
+
+
+model_aic <- as.data.frame(unlist(model_aic))
+acc_list <- as.data.frame(unlist(acc_list))
+auc_list <-as.data.frame(unlist(auc_list))
+
+combo <- cbind(model_aic, acc_list, auc_list)
+write.table(model_aic, file="model_aic.csv", sep=",")
+
+# table of mean model outputs ---------------------------------------------------
+
+sf_combo_data <- read_csv(here::here("Shade Fraction Data Sheets and Code", "model_aic.csv"))
+# the column headers are off, they 
+
+# read in data and make it R friendly 
+type_converted <- read_csv(here::here("Shade Fraction Data Sheets and Code", "type conversion train response variable accuracy.csv")) %>% 
+  rename(type_converted = '0')
+not_type_converted <- read_csv(here::here("Shade Fraction Data Sheets and Code", "type conversion train response variable accuracy.csv")) %>% rename(not_type_converted = '1')
+
+type_converted <- type_converted %>% 
+  select (X1, type_converted) %>% 
+  drop_na() %>% 
+  filter (X1 == 0) %>% 
+  mutate(class_acc = type_converted/99)
+type_converted_accuracy <- type_converted %>% 
+   summarise(mean = mean(class_acc))
+
+not_type_converted <- not_type_converted %>% 
+  select (X1, not_type_converted) %>% 
+  drop_na() %>% 
+  filter (X1 == 1) %>% 
+  mutate(class_acc = not_type_converted/99)
+not_type_converted_accuracy <- not_type_converted %>% 
+   summarise(mean = mean(class_acc))
+```
+
+## Shade fractions: two response variables
+```{r}
+
+# make lists to later store values
+acc_list <- list()
+table_values <- list()
+model_aic <-list()
+auc_list <- list ()
+#prediction_list <- list()
+
+#type conversion model ------------------------------------
+for (i in 1:500)
+  {
+  #divide the response variable into equal number of observations
+  tc_yes <- sf2[which(sf2$new_model_class == "1"),]
+  tc_no <- sf2[which(sf2$new_model_class == "0"),]
+  
+  # pull 175 random observations from the high class and separate
+  yes <- sample(1:nrow(tc_yes), 99 , replace = FALSE)
+  polygon_data_high_train <- tc_yes[yes,]
+  # pull 175 random observations from the low class and separate
+  no <- sample(1:nrow(tc_no), 99 , replace = FALSE)
+  polygon_data_low_train <- tc_no[no,]
+  
+  # combine all random observations
+  train <- do.call("rbind", list(polygon_data_high_train, polygon_data_low_train))
+  
+  tc <- glm(new_model_class~shade_2018+max_2000_2006, data=train, family="binomial")
+  sum <-summary(tc)
+  sum
+  aic<- sum$aic
+  aic
+  model_aic <- append(model_aic, aic)
+  
+  # predict data 
+  pred<-predict(tc, train, type="response") 
+  
+  # error rate for data
+  pred1 <- ifelse (pred>0.5,1,0)
+  tab<- table(Predicted=pred1, Actual=train$new_model_class)
+  write.table(tab, file = "type conversion train response variable accuracy.csv", sep=",",col.names=NA, append=T)
+
+  acc <-1-sum(diag(tab))/sum(tab)   #error calculation. gives % observations predicted incorrectly 
+  acc <- 1- acc 
+  acc_list <- append(acc_list, acc)
+  
+  #auc score
+  pred <- predict(tc,train)
+  pred1 <-prediction(pred, train$new_model_class)
+  roc <- performance(pred1, "tpr", "fpr")
+  auc <-performance(pred1, "auc")
+  auc1 <- unlist(slot(auc, "y.values"))
+  auc_list <- append(auc_list, auc1)
+  
+}
+
+
+model_aic <- as.data.frame(unlist(model_aic))
+acc_list <- as.data.frame(unlist(acc_list))
+auc_list <-as.data.frame(unlist(auc_list))
+
+combo <- cbind(model_aic, acc_list, auc_list)
+write.table(model_aic, file="model_aic.csv", sep=",")
+
+# table of mean model outputs ---------------------------------------------------
+
+sf_combo_data <- read_csv(here::here("Shade Fraction Data Sheets and Code", "model_aic.csv"))
+# the column headers are off, they 
+
+# read in data and make it R friendly 
+type_converted <- read_csv(here::here("Shade Fraction Data Sheets and Code", "type conversion train response variable accuracy.csv")) %>% 
+  rename(type_converted = '0')
+not_type_converted <- read_csv(here::here("Shade Fraction Data Sheets and Code", "type conversion train response variable accuracy.csv")) %>% rename(not_type_converted = '1')
+
+type_converted <- type_converted %>% 
+  select (X1, type_converted) %>% 
+  drop_na() %>% 
+  filter (X1 == 0) %>% 
+  mutate(class_acc = type_converted/99)
+type_converted_accuracy <- type_converted %>% 
+   summarise(mean = mean(class_acc))
+
+not_type_converted <- not_type_converted %>% 
+  select (X1, not_type_converted) %>% 
+  drop_na() %>% 
+  filter (X1 == 1) %>% 
+  mutate(class_acc = not_type_converted/99)
+not_type_converted_accuracy <- not_type_converted %>% 
+   summarise(mean = mean(class_acc))
+
+
+```
+
+
+## shade fractions: three response variables
+```{r}
+# make lists to later store values
+acc_list <- list()
+table_values <- list()
+model_aic <-list()
+auc_list <- list ()
+#prediction_list <- list()
+
+#type conversion model ------------------------------------
+for (i in 1:500)
+  {
+  #divide the response variable into equal number of observations
+  tc_yes <- sf2[which(sf2$new_model_class == "1"),]
+  tc_no <- sf2[which(sf2$new_model_class == "0"),]
+  
+  # pull 175 random observations from the high class and separate
+  yes <- sample(1:nrow(tc_yes), 99 , replace = FALSE)
+  polygon_data_high_train <- tc_yes[yes,]
+  # pull 175 random observations from the low class and separate
+  no <- sample(1:nrow(tc_no), 99 , replace = FALSE)
+  polygon_data_low_train <- tc_no[no,]
+  
+  # combine all random observations
+  train <- do.call("rbind", list(polygon_data_high_train, polygon_data_low_train))
+  
+  tc <- glm(new_model_class~shade_2018+max_2000_2006+min_2000_200, data=train, family="binomial")
+  sum <-summary(tc)
+  sum
+  aic<- sum$aic
+  aic
+  model_aic <- append(model_aic, aic)
+  
+  # predict data 
+  pred<-predict(tc, train, type="response") 
+  
+  # error rate for data
+  pred1 <- ifelse (pred>0.5,1,0)
+  tab<- table(Predicted=pred1, Actual=train$new_model_class)
+  write.table(tab, file = "type conversion train response variable accuracy.csv", sep=",",col.names=NA, append=T)
+
+  acc <-1-sum(diag(tab))/sum(tab)   #error calculation. gives % observations predicted incorrectly 
+  acc <- 1- acc 
+  acc_list <- append(acc_list, acc)
+  
+  #auc score
+  pred <- predict(tc,train)
+  pred1 <-prediction(pred, train$new_model_class)
+  roc <- performance(pred1, "tpr", "fpr")
+  auc <-performance(pred1, "auc")
+  auc1 <- unlist(slot(auc, "y.values"))
+  auc_list <- append(auc_list, auc1)
+  
+}
+
+
+model_aic <- as.data.frame(unlist(model_aic))
+acc_list <- as.data.frame(unlist(acc_list))
+auc_list <-as.data.frame(unlist(auc_list))
+
+combo <- cbind(model_aic, acc_list, auc_list)
+write.table(model_aic, file="model_aic.csv", sep=",")
+
+# table of mean model outputs ---------------------------------------------------
+
+sf_combo_data <- read_csv(here::here("Shade Fraction Data Sheets and Code", "model_aic.csv"))
+# the column headers are off, they 
+
+# read in data and make it R friendly 
+type_converted <- read_csv(here::here("Shade Fraction Data Sheets and Code", "type conversion train response variable accuracy.csv")) %>% 
+  rename(type_converted = '0')
+not_type_converted <- read_csv(here::here("Shade Fraction Data Sheets and Code", "type conversion train response variable accuracy.csv")) %>% rename(not_type_converted = '1')
+
+type_converted <- type_converted %>% 
+  select (X1, type_converted) %>% 
+  drop_na() %>% 
+  filter (X1 == 0) %>% 
+  mutate(class_acc = type_converted/99)
+type_converted_accuracy <- type_converted %>% 
+   summarise(mean = mean(class_acc))
+
+not_type_converted <- not_type_converted %>% 
+  select (X1, not_type_converted) %>% 
+  drop_na() %>% 
+  filter (X1 == 1) %>% 
+  mutate(class_acc = not_type_converted/99)
+not_type_converted_accuracy <- not_type_converted %>% 
+   summarise(mean = mean(class_acc))
+```
+
+## shade fractions: four response variables
+
+```{r}
+# make lists to later store values
+acc_list <- list()
+table_values <- list()
+model_aic <-list()
+auc_list <- list ()
+#prediction_list <- list()
+
+#type conversion model ------------------------------------
+for (i in 1:500)
+  {
+  #divide the response variable into equal number of observations
+  tc_yes <- sf2[which(sf2$new_model_class == "1"),]
+  tc_no <- sf2[which(sf2$new_model_class == "0"),]
+  
+  # pull 175 random observations from the high class and separate
+  yes <- sample(1:nrow(tc_yes), 99 , replace = FALSE)
+  polygon_data_high_train <- tc_yes[yes,]
+  # pull 175 random observations from the low class and separate
+  no <- sample(1:nrow(tc_no), 99 , replace = FALSE)
+  polygon_data_low_train <- tc_no[no,]
+  
+  # combine all random observations
+  train <- do.call("rbind", list(polygon_data_high_train, polygon_data_low_train))
+  
+  tc <- glm(new_model_class~shade_2018+max_2000_2006+min_2000_200+prefire, data=train, family="binomial")
+  sum <-summary(tc)
+  sum
+  aic<- sum$aic
+  aic
+  model_aic <- append(model_aic, aic)
+  
+  # predict data 
+  pred<-predict(tc, train, type="response") 
+  
+  # error rate for data
+  pred1 <- ifelse (pred>0.5,1,0)
+  tab<- table(Predicted=pred1, Actual=train$new_model_class)
+  write.table(tab, file = "type conversion train response variable accuracy.csv", sep=",",col.names=NA, append=T)
+
+  acc <-1-sum(diag(tab))/sum(tab)   #error calculation. gives % observations predicted incorrectly 
+  acc <- 1- acc 
+  acc_list <- append(acc_list, acc)
+  
+  #auc score
+  pred <- predict(tc,train)
+  pred1 <-prediction(pred, train$new_model_class)
+  roc <- performance(pred1, "tpr", "fpr")
+  auc <-performance(pred1, "auc")
+  auc1 <- unlist(slot(auc, "y.values"))
+  auc_list <- append(auc_list, auc1)
+  
+}
+
+
+model_aic <- as.data.frame(unlist(model_aic))
+acc_list <- as.data.frame(unlist(acc_list))
+auc_list <-as.data.frame(unlist(auc_list))
+
+combo <- cbind(model_aic, acc_list, auc_list)
+write.table(model_aic, file="model_aic.csv", sep=",")
+
+# table of mean model outputs ---------------------------------------------------
+
+sf_combo_data <- read_csv(here::here("Shade Fraction Data Sheets and Code", "model_aic.csv"))
+# the column headers are off, they 
+
+# read in data and make it R friendly 
+type_converted <- read_csv(here::here("Shade Fraction Data Sheets and Code", "type conversion train response variable accuracy.csv")) %>% 
+  rename(type_converted = '0')
+not_type_converted <- read_csv(here::here("Shade Fraction Data Sheets and Code", "type conversion train response variable accuracy.csv")) %>% rename(not_type_converted = '1')
+
+type_converted <- type_converted %>% 
+  select (X1, type_converted) %>% 
+  drop_na() %>% 
+  filter (X1 == 0) %>% 
+  mutate(class_acc = type_converted/99)
+type_converted_accuracy <- type_converted %>% 
+   summarise(mean = mean(class_acc))
+
+not_type_converted <- not_type_converted %>% 
+  select (X1, not_type_converted) %>% 
+  drop_na() %>% 
+  filter (X1 == 1) %>% 
+  mutate(class_acc = not_type_converted/99)
+not_type_converted_accuracy <- not_type_converted %>% 
+   summarise(mean = mean(class_acc))
+```
+
+## GV fractions: one response variable
+```{r}
+# make lists to later store values
+acc_list <- list()
+table_values <- list()
+model_aic <-list()
+auc_list <- list ()
+#prediction_list <- list()
+
+#type conversion model ------------------------------------
+for (i in 1:500)
+  {
+  #divide the response variable into equal number of observations
+  tc_yes <- gv2[which(gv2$new_model_class == "1"),]
+  tc_no <- gv2[which(gv2$new_model_class == "0"),]
+  
+  # pull 175 random observations from the high class and separate
+  yes <- sample(1:nrow(tc_yes), 99 , replace = FALSE)
+  polygon_data_high_train <- tc_yes[yes,]
+  # pull 175 random observations from the low class and separate
+  no <- sample(1:nrow(tc_no), 99 , replace = FALSE)
+  polygon_data_low_train <- tc_no[no,]
+  
+  # combine all random observations
+  train <- do.call("rbind", list(polygon_data_high_train, polygon_data_low_train))
+  
+  tc <- glm(new_model_class~gv_2018, data=train, family="binomial")
+  sum <-summary(tc)
+  sum
+  aic<- sum$aic
+  aic
+  model_aic <- append(model_aic, aic)
+  
+  # predict data 
+  pred<-predict(tc, train, type="response") 
+  
+  # error rate for data
+  pred1 <- ifelse (pred>0.5,1,0)
+  tab<- table(Predicted=pred1, Actual=train$new_model_class)
+  write.table(tab, file = "type conversion train response variable accuracy.csv", sep=",",col.names=NA, append=T)
+
+  acc <-1-sum(diag(tab))/sum(tab)   #error calculation. gives % observations predicted incorrectly 
+  acc <- 1- acc 
+  acc_list <- append(acc_list, acc)
+  
+  #auc score
+  pred <- predict(tc,train)
+  pred1 <-prediction(pred, train$new_model_class)
+  roc <- performance(pred1, "tpr", "fpr")
+  auc <-performance(pred1, "auc")
+  auc1 <- unlist(slot(auc, "y.values"))
+  auc_list <- append(auc_list, auc1)
+  
+}
+
+
+model_aic <- as.data.frame(unlist(model_aic))
+acc_list <- as.data.frame(unlist(acc_list))
+auc_list <-as.data.frame(unlist(auc_list))
+
+combo <- cbind(model_aic, acc_list, auc_list)
+write.table(model_aic, file="model_aic.csv", sep=",")
+
+# table of mean model outputs ---------------------------------------------------
+
+sf_combo_data <- read_csv(here::here("Shade Fraction Data Sheets and Code", "model_aic.csv"))
+# the column headers are off, they 
+
+# read in data and make it R friendly 
+type_converted <- read_csv(here::here("Shade Fraction Data Sheets and Code", "type conversion train response variable accuracy.csv")) %>% 
+  rename(type_converted = '0')
+not_type_converted <- read_csv(here::here("Shade Fraction Data Sheets and Code", "type conversion train response variable accuracy.csv")) %>% rename(not_type_converted = '1')
+
+type_converted <- type_converted %>% 
+  select (X1, type_converted) %>% 
+  drop_na() %>% 
+  filter (X1 == 0) %>% 
+  mutate(class_acc = type_converted/99)
+type_converted_accuracy <- type_converted %>% 
+   summarise(mean = mean(class_acc))
+
+not_type_converted <- not_type_converted %>% 
+  select (X1, not_type_converted) %>% 
+  drop_na() %>% 
+  filter (X1 == 1) %>% 
+  mutate(class_acc = not_type_converted/99)
+not_type_converted_accuracy <- not_type_converted %>% 
+   summarise(mean = mean(class_acc))
+```
+
+## GV: two response variables 
+```{r}
+# make lists to later store values
+acc_list <- list()
+table_values <- list()
+model_aic <-list()
+auc_list <- list ()
+#prediction_list <- list()
+
+#type conversion model ------------------------------------
+for (i in 1:500)
+  {
+  #divide the response variable into equal number of observations
+  tc_yes <- gv2[which(gv2$new_model_class == "1"),]
+  tc_no <- gv2[which(gv2$new_model_class == "0"),]
+  
+  # pull 175 random observations from the high class and separate
+  yes <- sample(1:nrow(tc_yes), 99 , replace = FALSE)
+  polygon_data_high_train <- tc_yes[yes,]
+  # pull 175 random observations from the low class and separate
+  no <- sample(1:nrow(tc_no), 99 , replace = FALSE)
+  polygon_data_low_train <- tc_no[no,]
+  
+  # combine all random observations
+  train <- do.call("rbind", list(polygon_data_high_train, polygon_data_low_train))
+  
+  tc <- glm(new_model_class~gv_2018 + gv_min_2000_2006, data=train, family="binomial")
+  sum <-summary(tc)
+  sum
+  aic<- sum$aic
+  aic
+  model_aic <- append(model_aic, aic)
+  
+  # predict data 
+  pred<-predict(tc, train, type="response") 
+  
+  # error rate for data
+  pred1 <- ifelse (pred>0.5,1,0)
+  tab<- table(Predicted=pred1, Actual=train$new_model_class)
+  write.table(tab, file = "type conversion train response variable accuracy.csv", sep=",",col.names=NA, append=T)
+
+  acc <-1-sum(diag(tab))/sum(tab)   #error calculation. gives % observations predicted incorrectly 
+  acc <- 1- acc 
+  acc_list <- append(acc_list, acc)
+  
+  #auc score
+  pred <- predict(tc,train)
+  pred1 <-prediction(pred, train$new_model_class)
+  roc <- performance(pred1, "tpr", "fpr")
+  auc <-performance(pred1, "auc")
+  auc1 <- unlist(slot(auc, "y.values"))
+  auc_list <- append(auc_list, auc1)
+  
+}
+
+
+model_aic <- as.data.frame(unlist(model_aic))
+acc_list <- as.data.frame(unlist(acc_list))
+auc_list <-as.data.frame(unlist(auc_list))
+
+combo <- cbind(model_aic, acc_list, auc_list)
+write.table(model_aic, file="model_aic.csv", sep=",")
+
+# table of mean model outputs ---------------------------------------------------
+
+sf_combo_data <- read_csv(here::here("Shade Fraction Data Sheets and Code", "model_aic.csv"))
+# the column headers are off, they 
+
+# read in data and make it R friendly 
+type_converted <- read_csv(here::here("Shade Fraction Data Sheets and Code", "type conversion train response variable accuracy.csv")) %>% 
+  rename(type_converted = '0')
+not_type_converted <- read_csv(here::here("Shade Fraction Data Sheets and Code", "type conversion train response variable accuracy.csv")) %>% rename(not_type_converted = '1')
+
+type_converted <- type_converted %>% 
+  select (X1, type_converted) %>% 
+  drop_na() %>% 
+  filter (X1 == 0) %>% 
+  mutate(class_acc = type_converted/99)
+type_converted_accuracy <- type_converted %>% 
+   summarise(mean = mean(class_acc))
+
+not_type_converted <- not_type_converted %>% 
+  select (X1, not_type_converted) %>% 
+  drop_na() %>% 
+  filter (X1 == 1) %>% 
+  mutate(class_acc = not_type_converted/99)
+not_type_converted_accuracy <- not_type_converted %>% 
+   summarise(mean = mean(class_acc))
+```
+
+## GV: three response variables 
+
+```{r}
+# make lists to later store values
+acc_list <- list()
+table_values <- list()
+model_aic <-list()
+auc_list <- list ()
+#prediction_list <- list()
+
+#type conversion model ------------------------------------
+for (i in 1:500)
+  {
+  #divide the response variable into equal number of observations
+  tc_yes <- gv2[which(gv2$new_model_class == "1"),]
+  tc_no <- gv2[which(gv2$new_model_class == "0"),]
+  
+  # pull 175 random observations from the high class and separate
+  yes <- sample(1:nrow(tc_yes), 99 , replace = FALSE)
+  polygon_data_high_train <- tc_yes[yes,]
+  # pull 175 random observations from the low class and separate
+  no <- sample(1:nrow(tc_no), 99 , replace = FALSE)
+  polygon_data_low_train <- tc_no[no,]
+  
+  # combine all random observations
+  train <- do.call("rbind", list(polygon_data_high_train, polygon_data_low_train))
+  
+  tc <- glm(new_model_class~gv_2018 + gv_min_2000_2006 + gv_max_2000_2006, data=train, family="binomial")
+  sum <-summary(tc)
+  sum
+  aic<- sum$aic
+  aic
+  model_aic <- append(model_aic, aic)
+  
+  # predict data 
+  pred<-predict(tc, train, type="response") 
+  
+  # error rate for data
+  pred1 <- ifelse (pred>0.5,1,0)
+  tab<- table(Predicted=pred1, Actual=train$new_model_class)
+  write.table(tab, file = "type conversion train response variable accuracy.csv", sep=",",col.names=NA, append=T)
+
+  acc <-1-sum(diag(tab))/sum(tab)   #error calculation. gives % observations predicted incorrectly 
+  acc <- 1- acc 
+  acc_list <- append(acc_list, acc)
+  
+  #auc score
+  pred <- predict(tc,train)
+  pred1 <-prediction(pred, train$new_model_class)
+  roc <- performance(pred1, "tpr", "fpr")
+  auc <-performance(pred1, "auc")
+  auc1 <- unlist(slot(auc, "y.values"))
+  auc_list <- append(auc_list, auc1)
+  
+}
+
+
+model_aic <- as.data.frame(unlist(model_aic))
+acc_list <- as.data.frame(unlist(acc_list))
+auc_list <-as.data.frame(unlist(auc_list))
+
+combo <- cbind(model_aic, acc_list, auc_list)
+write.table(model_aic, file="model_aic.csv", sep=",")
+
+# table of mean model outputs ---------------------------------------------------
+
+sf_combo_data <- read_csv(here::here("Shade Fraction Data Sheets and Code", "model_aic.csv"))
+# the column headers are off, they 
+
+# read in data and make it R friendly 
+type_converted <- read_csv(here::here("Shade Fraction Data Sheets and Code", "type conversion train response variable accuracy.csv")) %>% 
+  rename(type_converted = '0')
+not_type_converted <- read_csv(here::here("Shade Fraction Data Sheets and Code", "type conversion train response variable accuracy.csv")) %>% rename(not_type_converted = '1')
+
+type_converted <- type_converted %>% 
+  select (X1, type_converted) %>% 
+  drop_na() %>% 
+  filter (X1 == 0) %>% 
+  mutate(class_acc = type_converted/99)
+type_converted_accuracy <- type_converted %>% 
+   summarise(mean = mean(class_acc))
+
+not_type_converted <- not_type_converted %>% 
+  select (X1, not_type_converted) %>% 
+  drop_na() %>% 
+  filter (X1 == 1) %>% 
+  mutate(class_acc = not_type_converted/99)
+not_type_converted_accuracy <- not_type_converted %>% 
+   summarise(mean = mean(class_acc))
+```
+
+## GV: four response variables 
+```{r}
+# make lists to later store values
+acc_list <- list()
+table_values <- list()
+model_aic <-list()
+auc_list <- list ()
+#prediction_list <- list()
+
+#type conversion model ------------------------------------
+for (i in 1:500)
+  {
+  #divide the response variable into equal number of observations
+  tc_yes <- gv2[which(gv2$new_model_class == "1"),]
+  tc_no <- gv2[which(gv2$new_model_class == "0"),]
+  
+  # pull 175 random observations from the high class and separate
+  yes <- sample(1:nrow(tc_yes), 99 , replace = FALSE)
+  polygon_data_high_train <- tc_yes[yes,]
+  # pull 175 random observations from the low class and separate
+  no <- sample(1:nrow(tc_no), 99 , replace = FALSE)
+  polygon_data_low_train <- tc_no[no,]
+  
+  # combine all random observations
+  train <- do.call("rbind", list(polygon_data_high_train, polygon_data_low_train))
+  
+  tc <- glm(new_model_class~gv_2018 + gv_min_2000_2006, gv_max_2000_2006 + gv_avg_2000_2006, data=train, family="binomial")
+  sum <-summary(tc)
+  sum
+  aic<- sum$aic
+  aic
+  model_aic <- append(model_aic, aic)
+  
+  # predict data 
+  pred<-predict(tc, train, type="response") 
+  
+  # error rate for data
+  pred1 <- ifelse (pred>0.5,1,0)
+  tab<- table(Predicted=pred1, Actual=train$new_model_class)
+  write.table(tab, file = "type conversion train response variable accuracy.csv", sep=",",col.names=NA, append=T)
+
+  acc <-1-sum(diag(tab))/sum(tab)   #error calculation. gives % observations predicted incorrectly 
+  acc <- 1- acc 
+  acc_list <- append(acc_list, acc)
+  
+  #auc score
+  pred <- predict(tc,train)
+  pred1 <-prediction(pred, train$new_model_class)
+  roc <- performance(pred1, "tpr", "fpr")
+  auc <-performance(pred1, "auc")
+  auc1 <- unlist(slot(auc, "y.values"))
+  auc_list <- append(auc_list, auc1)
+  
+}
+
+
+model_aic <- as.data.frame(unlist(model_aic))
+acc_list <- as.data.frame(unlist(acc_list))
+auc_list <-as.data.frame(unlist(auc_list))
+
+combo <- cbind(model_aic, acc_list, auc_list)
+write.table(model_aic, file="model_aic.csv", sep=",")
+
+# table of mean model outputs ---------------------------------------------------
+
+sf_combo_data <- read_csv(here::here("Shade Fraction Data Sheets and Code", "model_aic.csv"))
+# the column headers are off, they 
+
+# read in data and make it R friendly 
+type_converted <- read_csv(here::here("Shade Fraction Data Sheets and Code", "type conversion train response variable accuracy.csv")) %>% 
+  rename(type_converted = '0')
+not_type_converted <- read_csv(here::here("Shade Fraction Data Sheets and Code", "type conversion train response variable accuracy.csv")) %>% rename(not_type_converted = '1')
+
+type_converted <- type_converted %>% 
+  select (X1, type_converted) %>% 
+  drop_na() %>% 
+  filter (X1 == 0) %>% 
+  mutate(class_acc = type_converted/99)
+type_converted_accuracy <- type_converted %>% 
+   summarise(mean = mean(class_acc))
+
+not_type_converted <- not_type_converted %>% 
+  select (X1, not_type_converted) %>% 
+  drop_na() %>% 
+  filter (X1 == 1) %>% 
+  mutate(class_acc = not_type_converted/99)
+not_type_converted_accuracy <- not_type_converted %>% 
+   summarise(mean = mean(class_acc))
+```
+
+
+## GV: four response variables 
+```{r}
+# make lists to later store values
+acc_list <- list()
+table_values <- list()
+model_aic <-list()
+auc_list <- list ()
+#prediction_list <- list()
+
+#type conversion model ------------------------------------
+for (i in 1:500)
+  {
+  #divide the response variable into equal number of observations
+  tc_yes <- gv2[which(gv2$new_model_class == "1"),]
+  tc_no <- gv2[which(gv2$new_model_class == "0"),]
+  
+  # pull 175 random observations from the high class and separate
+  yes <- sample(1:nrow(tc_yes), 99 , replace = FALSE)
+  polygon_data_high_train <- tc_yes[yes,]
+  # pull 175 random observations from the low class and separate
+  no <- sample(1:nrow(tc_no), 99 , replace = FALSE)
+  polygon_data_low_train <- tc_no[no,]
+  
+  # combine all random observations
+  train <- do.call("rbind", list(polygon_data_high_train, polygon_data_low_train))
+  
+  tc <- glm(new_model_class~gv_2018 + gv_min_2000_2006, gv_max_2000_2006 + prefire, data=train, family="binomial")
+  sum <-summary(tc)
+  sum
+  aic<- sum$aic
+  aic
+  model_aic <- append(model_aic, aic)
+  
+  # predict data 
+  pred<-predict(tc, train, type="response") 
+  
+  # error rate for data
+  pred1 <- ifelse (pred>0.5,1,0)
+  tab<- table(Predicted=pred1, Actual=train$new_model_class)
+  write.table(tab, file = "type conversion train response variable accuracy.csv", sep=",",col.names=NA, append=T)
+
+  acc <-1-sum(diag(tab))/sum(tab)   #error calculation. gives % observations predicted incorrectly 
+  acc <- 1- acc 
+  acc_list <- append(acc_list, acc)
+  
+  #auc score
+  pred <- predict(tc,train)
+  pred1 <-prediction(pred, train$new_model_class)
+  roc <- performance(pred1, "tpr", "fpr")
+  auc <-performance(pred1, "auc")
+  auc1 <- unlist(slot(auc, "y.values"))
+  auc_list <- append(auc_list, auc1)
+  
+}
+
+
+model_aic <- as.data.frame(unlist(model_aic))
+acc_list <- as.data.frame(unlist(acc_list))
+auc_list <-as.data.frame(unlist(auc_list))
+
+combo <- cbind(model_aic, acc_list, auc_list)
+write.table(model_aic, file="model_aic.csv", sep=",")
+
+# table of mean model outputs ---------------------------------------------------
+
+sf_combo_data <- read_csv(here::here("Shade Fraction Data Sheets and Code", "model_aic.csv"))
+# the column headers are off, they 
+
+# read in data and make it R friendly 
+type_converted <- read_csv(here::here("Shade Fraction Data Sheets and Code", "type conversion train response variable accuracy.csv")) %>% 
+  rename(type_converted = '0')
+not_type_converted <- read_csv(here::here("Shade Fraction Data Sheets and Code", "type conversion train response variable accuracy.csv")) %>% rename(not_type_converted = '1')
+
+type_converted <- type_converted %>% 
+  select (X1, type_converted) %>% 
+  drop_na() %>% 
+  filter (X1 == 0) %>% 
+  mutate(class_acc = type_converted/99)
+type_converted_accuracy <- type_converted %>% 
+   summarise(mean = mean(class_acc))
+
+not_type_converted <- not_type_converted %>% 
+  select (X1, not_type_converted) %>% 
+  drop_na() %>% 
+  filter (X1 == 1) %>% 
+  mutate(class_acc = not_type_converted/99)
+not_type_converted_accuracy <- not_type_converted %>% 
+   summarise(mean = mean(class_acc))
+```
+
+
+
+
+
+
+
+
+
