@@ -308,6 +308,11 @@ none_mean_acc <- none %>%
 
 ```
 
+#### Partial Dependence Plots
+```{r}
+
+```
+
 
 ### Random Forest Model with 3 mortality classes
 
@@ -553,12 +558,14 @@ table(class.out, actual.classes)
 
 ### Chris' modified binomial model (modified by amp): 4 classes
 
-
 ```{r}
 # model parameters---------------------------------------------
 
 # set sample size 
 nsample4 = 125
+
+#set number of foor loop iterations
+iteration = 100
 
 # lists to save outputs from for loop
 test_accuracy_list <- list()
@@ -569,7 +576,7 @@ test_accuracy_list <- list()
 
 # for loop binomial model -----------------------------------------------------------------
 
-for (i in 1:100) {
+for (i in 1:iteration) {
 # train and test data 
   mcf_high <- mcf[which(mcf$mortality_qual == "High"),]
   mcf_low <- mcf[which(mcf$mortality_qual == "Low"),]
@@ -627,22 +634,12 @@ file.remove(here::here("Model Data Sheets and Code", "test.csv"))
 tabb <- table(Predicted = model_test$class_out, Actual = test$canopy_loss_success)
 acc<-1-sum(diag(tabb))/sum(tabb) #% missclassified
 
-write.table(model_predictions, "test.csv", sep = ",", col.names = NA, append = F)
-model_test <- read_csv(here::here("Model Data Sheets and Code", "test.csv"))
-model_test$class_out <- factor (model_test$class_out, levels = c("None", "Low", "Moderate", "High"))
-file.remove(here::here("Model Data Sheets and Code",'test.csv'))
-
-
-# test data accuracy 
-tabb <- table(Predicted = model_test$class_out, Actual = test$canopy_loss_success)
-acc<-1-sum(diag(tabb))/sum(tabb)
-acc #% missclassified
-
 test_accuracy <-(1-acc)*100 #model accuracy
 
 # lists to save model outputs
 test_accuracy_list <- append(test_accuracy_list, test_accuracy)
 write.table(tabb, file = "binomial model test accuracy table.csv", sep=",",col.names=NA, append=T)
+
 
 }
 
@@ -670,7 +667,7 @@ high_mean_acc <- high %>%
   filter (X1 == "High") %>% 
   mutate (High = as.numeric(High),
           class_acc = High / 33) %>% 
-  summarise(mean = mean(class_acc))
+  summarise(mean = (sum(class_acc)/iteration))
 
 moderate_mean_acc <- moderate %>% 
   select (X1, Moderate) %>% 
@@ -678,7 +675,7 @@ moderate_mean_acc <- moderate %>%
   filter (X1 == "Moderate") %>%
   mutate (Moderate = as.numeric(Moderate),
           class_acc = Moderate / 35)%>% 
-  summarise(mean = mean(class_acc))
+  summarise(mean = (sum(class_acc)/iteration))
 
 low_mean_acc <- low %>% 
   select (X1, Low) %>% 
@@ -686,7 +683,7 @@ low_mean_acc <- low %>%
   filter (X1 == "Low") %>%
   mutate (Low = as.numeric(Low),
           class_acc = Low / 41) %>% 
-  summarise(mean = mean(class_acc))
+  summarise(mean = (sum(class_acc)/iteration))
 
 none_mean_acc <- none %>% 
   select (X1, None) %>% 
@@ -694,7 +691,7 @@ none_mean_acc <- none %>%
   filter (X1 == "None") %>%
   mutate (None = as.numeric(None),
           class_acc = None / 126) %>% 
-  summarise(mean = mean(class_acc))
+  summarise(mean = (sum(class_acc)/iteration))
 
 ```
 
@@ -705,10 +702,9 @@ Notes:
 
 - also split up the data into train and test data with an equal number of observations in each mortality class for the train data. The model kept confusing the mortality with low/none since none had such a higher number of observations
 
-<<<<<<< HEAD
 - I don't know why I am having so much trouble with reordering the levels of the test data predictions (after converting the list from vector data to a data frame). I keep getting this error: *Outer Names are only allowed for unnamed scalar atomic* and the fct_relevel won't actually reorder. I tried several different codes (factor, fct_relevel, fct-reorder, etc) to order the class, but the only thing that worked was exporting the data into a csv file then reimporting it back into r, then deleting the file (bc its in a for loop). fct_relevel works now. I think R just doesn't like vector data.  
 
-- ***The current issue I'm getting is when there are no accurate predictions for a mortality class(ie High), that 0 value doesnt get stored in the output table, so when I try to get the average accuracy for that mortality class I don't have a complete list of the values. Some issue with the model below***
+- An issue I was having was when there are no accurate predictions for a mortality class(ie High), that 0 value doesnt get stored in the output table, so when I tried to get the average accuracy for that mortality class I don't have a complete list of the values. I fixed this by suming the acuracy each iteration that appeared in the data set, then dividing that by the total number of iterations run. works. 
 
 - i dont know why I am having so much trouble with converting the test data predictions into a data frame and then reordering the levels. If I get the data from to work then the factor works but moderate is registered as an NA when it wasnt before. If i use mutate fct_relevel then I get this error: fct_relvel bc keep getting this error: Outer names are only allowed for unnamed scalar atomic inputs (even when used mutate to convert the data from atomic data and is.atomic() did not register the data as atomic; use is.atomic(data_name$column_name) to check if r recognizes the data as atomic. I think this issue is occuring bc the data I'm converting to a data frame was originally vector data). Convertign the class_out to a data frame, exporting it to a csv, and then reimporting it was the only way to reorder the levels without having moderate converted to NA
 
@@ -720,6 +716,9 @@ Notes:
 
 # set sample size 
 nsample5 = 125
+
+#set number of foor loop iterations
+iteration1 = 100
 
 # sub-data: combine low and no mortality classes
 mcf_3 <- mcf %>%
@@ -752,7 +751,7 @@ test_accuracy_list <- list()
 
 # for loop binomial model -----------------------------------------------------------------
 
-for (i in 1:100) {
+for (i in 1:iteration1) {
 # train and test data 
   mcf_high <- mcf_3[which(mcf_3 $ mortality_qual_3 == "High"),]
   mcf_low <- mcf_3[which(mcf_3 $ mortality_qual_3 == "Low"),]
@@ -833,7 +832,7 @@ high_mean_acc <- high %>%
   filter (X1 == "High") %>% 
   mutate (High = as.numeric(High),
           class_acc = High / 33) %>% 
-  summarise(mean = mean(class_acc))
+  summarise(mean = (sum(class_acc)/iteration))
 
 moderate_mean_acc <- moderate %>% 
   select (X1, Moderate) %>% 
@@ -841,7 +840,7 @@ moderate_mean_acc <- moderate %>%
   filter (X1 == "Moderate") %>%
   mutate (Moderate = as.numeric(Moderate),
           class_acc = Moderate / 35)%>% 
-  summarise(mean = mean(class_acc))
+  summarise(mean = (sum(class_acc)/iteration))
 
 low_mean_acc <- low %>% 
   select (X1, Low) %>% 
@@ -849,7 +848,7 @@ low_mean_acc <- low %>%
   filter (X1 == "Low") %>%
   mutate (Low = as.numeric(Low),
           class_acc = Low / 292) %>% 
-  summarise(mean = mean(class_acc))
+ summarise(mean = (sum(class_acc)/iteration)) # used this code before to get mean: summarise(mean = mean(class_acc))
 ```
 
 
