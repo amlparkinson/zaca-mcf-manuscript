@@ -17,6 +17,8 @@ library(stringr)
 library(here)
 library(janitor)
 library(ggfortify)
+library(ALEPlot)
+library(iml)
 
 mcf <- read.csv('Zaca MCF variables for model.csv') %>% 
   select('drainage_assoication', 'ridge', 'mortality', 
@@ -126,9 +128,18 @@ Interestingly, stands with higher elevation had higher mortality and stands with
 ### PCA
 
 ```{r}
-#sub-data
 mcf_sub <- mcf %>% 
-  select (dem_10m_zaca:sr, rain:tmax, TPI_five, TWI, cwd:vpd_jan)
+  select (dem_10m_zaca:sr, rain:tmax, TPI_five, TWI, cwd:vpd_aug) %>% 
+  rename ('Elevation' = 'dem_10m_zaca',
+          'Slope' = 'slope',
+          'TPI' = 'TPI_five',
+          'Precip' = 'rain',
+          'Solar Radiation' = 'sr',
+          'Flow Accumulation' = 'flow_accumulation',
+          'CWD' = 'cwd',
+          'Temperature' = 'tmax',
+          'VPD (Jan)' = 'vpd_jan',
+          'VPD (Aug)' = 'vpd_aug')
 
 mcf_sub_pca <- prcomp(mcf_sub, scale = T)
 
@@ -138,13 +149,14 @@ mcf_sub_pca
 
 #plot
 mcf_sub_pca_plot <- autoplot(mcf_sub_pca, 
-                          colour = NA, # HAVE to spell it color this way (colour) 
+                          colour = NA, # HAVE to spell it color this way (colour) bc thats the only spelling form autoplot recognizes
                           loadings.label = T,
                           loadings.label.size = 3,
                           loadings.label.colour = "black",
                           loadings.label.repel = T) +
-  scale_y_continuous(lim=c(-0.1, 0.15)) +
-  labs(title = "Zaca Fire MCF PCA")
+  scale_y_continuous(lim=c(-0.15, 0.15)) +
+  labs(title = "Zaca Fire MCF PCA") +
+  theme_minimal()
 
 mcf_sub_pca_plot
 
@@ -205,7 +217,7 @@ for (i in 1:500)
   test <- do.call("rbind", list(polygon_data_none_test, polygon_data_low_test, polygon_data_moderate_test, polygon_data_high_test))
   
   #random forest model
-  rfm<-randomForest(mortality_qual~ rain + tmax + TPI_five + dem_10m_zaca + flow_accumulation + sr + slope + TWI, data = train, ntree=500, importance=T, nscale=0)
+  rfm<-randomForest(mortality_qual~ rain + tmax + TPI_five + dem_10m_zaca + flow_accumulation + sr + slope + TWI + cwd + vpd_aug, data = train, ntree=500, importance=T, nscale=0)
   
   #plot to visualize variable importance
   #varImpPlot(rfm)
@@ -228,7 +240,8 @@ for (i in 1:500)
 
 ```
 
-Note: when running the model, have to remember to delete the rfm model importance.csv and mcf test accuracy table.csv files otherwise R will keep adding the values onto the orignial file and not make a new one for each model succession. I've been doing that or renaming the file, but maybe theres an easier method
+- Note: when running the model, have to remember to delete the rfm model importance.csv and mcf test accuracy table.csv files otherwise R will keep adding the values onto the orignial file and not make a new one for each model succession. I've been doing that or renaming the file, but maybe theres an easier method
+- QUESTION: Should I be using set seed? 
 
 #### Model Results
 ```{r}
@@ -267,6 +280,7 @@ model_importance_summary <- model_importance_tidy %>%
              mean_decrease_gini_mean = mean(mean_decrease_gini)
   )
 
+file.remove(here::here("Model Data Sheets and Code", "rfm model importance.csv"))
 # average class accuracy ---------------------------------------------------------
 
 high <- read_csv("mcf test accuracy table.csv")
@@ -306,12 +320,52 @@ none_mean_acc <- none %>%
           class_acc = Low / 126) %>% 
   summarise(mean = mean(class_acc))
 
+file.remove(here::here("Model Data Sheets and Code", "mcf test accuracy table.csv"))
+
 ```
 
-#### Partial Dependence Plots
+#### ALE Plots
+
+So I was using partial dependence plots to visualize the variables in RF, but then found out you shouldn't use PDP when the variables are correlated with other variables it's one of the assumptions of PDP https://christophm.github.io/interpretable-ml-book/pdp.html ; https://arxiv.org/pdf/1612.08468.pdf). Instead, I should be using Accumulated Local Effects (ALE) plots (https://christophm.github.io/interpretable-ml-book/ale.html). Unfortunatly, there is not a lot of information out there on how to set up the code. Maybe that stats friend you mentioned way back when will know how and we can offer co-authorship. 
+
+- code example of how to make ALE using iml package:
+-- https://medium.com/the-die-is-forecast/shining-a-light-on-the-black-box-of-machine-learning-2b49fe471cee
+-- https://cran.r-project.org/web/packages/iml/vignettes/intro.html
+
+- webpage: https://christophm.github.io/interpretable-ml-book/ale.html
+- github code: https://github.com/christophM/interpretable-ml-book/blob/6153b2ac0143f879bd4a856a1048545a40cd1a74/manuscript/05.4-agnostic-ale.Rmd
+
 ```{r}
+train_x <- train[-which(names(train) == "mortality_qual")]
+
+sr_predictor_high <- Predictor$new(rfm, data = train_x, type = "prob", class = "High")
+sr_high <- plot(FeatureEffect$new(sr_predictor_high, feature = "sr")) + ggtitle("High")
+
+sr_predictor_moderate <- Predictor$new(rfm, data = train_x, type = "prob", class = "Moderate")
+sr_moderate <- plot(FeatureEffect$new(sr_predictor_moderate, feature = "sr")) + ggtitle("Moderate")
+
+sr_predictor_low <- Predictor$new(rfm, data = train_x, type = "prob", class = "Low")
+sr_low <- plot(FeatureEffect$new(sr_predictor_low, feature = "sr")) + ggtitle("Low")
+
+sr_predictor_none <- Predictor$new(rfm, data = train_x, type = "prob", class = "None")
+sr_none <- plot(FeatureEffect$new(sr_predictor_none, feature = "sr")) + ggtitle("None")
+
+ggarrange(sr_high, sr_moderate, sr_low, sr_none, ncol = 2, nrow = 2)
+
+
+
+
+sr_df <- aml_sr$results
+ggplot(sr_df, aes(x = sr, y = .ale)) + geom_line()
+
+
 
 ```
+- get error when try to run the model on the test data instead of the train data. Think the data used in the model, needs to be the same data to do ALE plots.
+
+- How to interpret ALE plots:
+  - ale plots let us determine the effect that each individual input, isolated/regardless of all others, has on our output.
+  - By localizing the measurements via the use of windows, we are able to avoid including practically unlikely or impossible situations. For instance, in our model to predict the number of joggers in a day, temperature and time of year are likely highly correlated. By limiting our window in our ALE plot, we can ensure that we're not factoring in a scenario where the time of year is winter and the temperature is 35 degrees Celsius. We shouldn't be factoring in the model's prediction for this situation because it is certainly outside of any data set we will be using. ALE plots are able to avoid such situations and give us much more accurate results.
 
 
 ### Random Forest Model with 3 mortality classes
@@ -427,7 +481,7 @@ model_importance_summary <- model_importance_tidy %>%
              mean_dec_accuracy_mean = mean(mean_decrease_accuracy),
              mean_decrease_gini_mean = mean(mean_decrease_gini)
   )
-
+file.remove(here::here("Model Data Sheets and Code", "rfm model importance_3 class mortality.csv"))
 # average class accuracy ---------------------------------------------------------
 
 high <- read_csv("mcf test accuracy table_3 class mortality.csv") 
@@ -457,6 +511,27 @@ low_mean_acc <- low %>%
   mutate (Low = as.numeric(Low),
           class_acc = Low / 292) %>% 
   summarise(mean = mean(class_acc))
+
+file.remove(here::here("Model Data Sheets and Code", "mcf test accuracy table_3 class mortality.csv"))
+
+```
+
+
+
+```{r}
+train_x <- train[-which(names(train) == "three_class_mortality")]
+
+sr_predictor_high <- Predictor$new(rfm, data = train_x, type = "prob", class = "High")
+sr_high <- plot(FeatureEffect$new(sr_predictor_high, feature = "sr")) + ggtitle("High")
+
+sr_predictor_moderate <- Predictor$new(rfm, data = train_x, type = "prob", class = "Moderate")
+sr_moderate <- plot(FeatureEffect$new(sr_predictor_moderate, feature = "sr")) + ggtitle("Moderate")
+
+sr_predictor_low <- Predictor$new(rfm, data = train_x, type = "prob", class = "Low")
+sr_low <- plot(FeatureEffect$new(sr_predictor_low, feature = "sr")) + ggtitle("Low")
+
+ggarrange(sr_high, sr_moderate, sr_low, ncol = 2, nrow = 2)
+
 
 
 ```
@@ -524,7 +599,7 @@ rf.cv
 
 Accuracy pretty much the same without using cross validation. 
 
-### Chris' modified binomial model (original code??)
+### Chris' modified binomial model (original code)
 
 
 ```{r, eval = F, echo = F}
@@ -564,8 +639,9 @@ table(class.out, actual.classes)
 # set sample size 
 nsample4 = 125
 
-#set number of foor loop iterations
-iteration = 100
+# set # of iterations to run 
+
+iteration = 50
 
 # lists to save outputs from for loop
 test_accuracy_list <- list()
@@ -646,6 +722,8 @@ write.table(tabb, file = "binomial model test accuracy table.csv", sep=",",col.n
 
 ```
 
+- I looked at the PCA to pick variables. It was the easiest way to determine which variables were strongly correlated with other variables
+
 #### Model Results
 ```{r}
 # model output results ---------------------------------------------------------------------------------------
@@ -666,15 +744,15 @@ high_mean_acc <- high %>%
   drop_na() %>% 
   filter (X1 == "High") %>% 
   mutate (High = as.numeric(High),
-          class_acc = High / 33) %>% 
-  summarise(mean = (sum(class_acc)/iteration))
+          class_acc = High /33) %>% 
+  summarise(mean = (sum(class_acc)/iteration)) 
 
 moderate_mean_acc <- moderate %>% 
   select (X1, Moderate) %>% 
   drop_na() %>% 
   filter (X1 == "Moderate") %>%
   mutate (Moderate = as.numeric(Moderate),
-          class_acc = Moderate / 35)%>% 
+          class_acc = Moderate / 35) %>% 
   summarise(mean = (sum(class_acc)/iteration))
 
 low_mean_acc <- low %>% 
@@ -691,7 +769,10 @@ none_mean_acc <- none %>%
   filter (X1 == "None") %>%
   mutate (None = as.numeric(None),
           class_acc = None / 126) %>% 
-  summarise(mean = (sum(class_acc)/iteration))
+  summarise(mean = ((sum(class_acc))/iteration))
+
+file.remove(here::here("Model Data Sheets and Code", "binomial model test accuracy table.csv"))
+
 
 ```
 
@@ -702,7 +783,7 @@ Notes:
 
 - also split up the data into train and test data with an equal number of observations in each mortality class for the train data. The model kept confusing the mortality with low/none since none had such a higher number of observations
 
-- I don't know why I am having so much trouble with reordering the levels of the test data predictions (after converting the list from vector data to a data frame). I keep getting this error: *Outer Names are only allowed for unnamed scalar atomic* and the fct_relevel won't actually reorder. I tried several different codes (factor, fct_relevel, fct-reorder, etc) to order the class, but the only thing that worked was exporting the data into a csv file then reimporting it back into r, then deleting the file (bc its in a for loop). fct_relevel works now. I think R just doesn't like vector data.  
+- I don't know why I am having so much trouble with reordering the levels of the test data predictions (after converting the list from vector data to a data frame). I keep getting this error: *Outer Names are only allowed for unnamed scalar atomic* and the fct_relevel won't actually reorder correctly. I tried several different codes (factor, fct_relevel, fct-reorder, etc) to order the class, but the only thing that worked was exporting the data into a csv file then reimporting it back into r, then deleting the file (bc its in a for loop). fct_relevel works now. I think R just doesn't like vector data.  
 
 - An issue I was having was when there are no accurate predictions for a mortality class(ie High), that 0 value doesnt get stored in the output table, so when I tried to get the average accuracy for that mortality class I don't have a complete list of the values. I fixed this by suming the acuracy each iteration that appeared in the data set, then dividing that by the total number of iterations run. works. 
 
@@ -862,12 +943,10 @@ Chose the GFDL-CM3 model which is from the NOAA Geophysical Fluid Dynamics Labor
 - LOCA VIR RUN (Scripps): Has monthly data for RCP 4.5 and 8.5 for precipitation and "air temperature"" 
 - LOCA Downscaled CMIP5 Climate Projections (Scripps): daily and annual data for RCP 4.5 and 8.5 (no monthly data) for min temp, max temp, precip, solar radiation, relative humidity
 - LOCA Derived Products: mixture of things. RCP 4.5 and 8.5. No monthly data for climate variables
+- units (for CNRM-CM5, CanESM2): temperature = Kelvin, precipitation = kg/m2/s, solar radiation = W/m2
+- unsure about units from HadGEM2, GFDL-CM3, or MIROC5 (may be same as above)
 
-
-
-```{r}
-
-```
+- *** so I started downloading data to start this analysis and then realized the precipitation values are in flux format. Worse, in units of seconds, not days. I may learn how to deal with this type of data for future modelingspring quarter, but not there yet. 
 
 
 
