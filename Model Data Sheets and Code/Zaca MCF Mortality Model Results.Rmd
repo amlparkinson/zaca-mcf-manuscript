@@ -326,21 +326,40 @@ file.remove(here::here("Model Data Sheets and Code", "mcf test accuracy table.cs
 
 #### ALE Plots
 
-So I was using partial dependence plots to visualize the variables in RF, but then found out you shouldn't use PDP when the variables are correlated with other variables it's one of the assumptions of PDP https://christophm.github.io/interpretable-ml-book/pdp.html ; https://arxiv.org/pdf/1612.08468.pdf). Instead, I should be using Accumulated Local Effects (ALE) plots (https://christophm.github.io/interpretable-ml-book/ale.html). Unfortunatly, there is not a lot of information out there on how to set up the code. Maybe that stats friend you mentioned way back when will know how and we can offer co-authorship. 
+So I was using partial dependence plots to visualize the variables in RF, but then found out you shouldn't use PDP when the variables are correlated with other variables it's one of the assumptions of PDP https://christophm.github.io/interpretable-ml-book/pdp.html ; https://arxiv.org/pdf/1612.08468.pdf). Instead, I should be using Accumulated Local Effects (ALE) plots (https://christophm.github.io/interpretable-ml-book/ale.html). May also want to look at ICE plots (https://towardsdatascience.com/an-overview-of-model-explainability-in-modern-machine-learning-fc0f22c8c29a)
 
 - code example of how to make ALE using iml package:
--- https://medium.com/the-die-is-forecast/shining-a-light-on-the-black-box-of-machine-learning-2b49fe471cee
--- https://cran.r-project.org/web/packages/iml/vignettes/intro.html
+  - https://medium.com/the-die-is-forecast/shining-a-light-on-the-black-box-of-machine-learning-2b49fe471cee
+  - https://cran.r-project.org/web/packages/iml/vignettes/intro.html
 
-- webpage: https://christophm.github.io/interpretable-ml-book/ale.html
-- github code: https://github.com/christophM/interpretable-ml-book/blob/6153b2ac0143f879bd4a856a1048545a40cd1a74/manuscript/05.4-agnostic-ale.Rmd
+- webpage explaining ALE: https://christophm.github.io/interpretable-ml-book/ale.html
+- github code for webpage above: https://github.com/christophM/interpretable-ml-book/blob/6153b2ac0143f879bd4a856a1048545a40cd1a74/manuscript/05.4-agnostic-ale.Rmd
+
+other sources (1-2 journal article)
+- https://towardsdatascience.com/an-overview-of-model-explainability-in-modern-machine-learning-fc0f22c8c29a
+- https://www.moodysanalytics.com/-/media/presentation/2019/mas-t1d1-transparent-and-interpretable-ml-in-risk-modeling.pdf
+- https://www.enjine.com/blog/interpreting-machine-learning-models-accumulated-local-effects/ --> it would be cool to be able to make the plot in this website
+- https://arxiv.org/pdf/1612.08468.pdf
+- https://cran.r-project.org/web/packages/iml/iml.pdf
+- https://cran.r-project.org/web/packages/iml/vignettes/intro.html
+- https://cran.r-project.org/web/packages/ALEPlot/ALEPlot.pdf (iml package and documentation a lot more useful)
+
+So, I just wanted to get the code started. I think you will be better at streamlining makingthe rest of the graphs, especially with the same axis scales. One thing I did notice is that ALE plots for the same mortality class resulted in 
 
 ```{r}
+
+## sample code to make ALE plos (using solar radiation as example) used combo of: https://cran.r-project.org/web/packages/iml/vignettes/intro.html and https://cran.r-project.org/web/packages/iml/iml.pdf
+
+#do something with the response variable column (removes it but R can still recognize it)
 train_x <- train[-which(names(train) == "mortality_qual")]
 
+# this does something to create values that will be plotted in the ALE plot: inputs include the random forest model (rfm) run above, the trainig data with the modified response column (created above), specifying we want output to be a probability, looking at a specific mortality class 
 sr_predictor_high <- Predictor$new(rfm, data = train_x, type = "prob", class = "High")
+
+# plot the outputs in an ALE plot using the predictor info created above just for solar radiation variable(feature = "explanatory variable"). Doesnt work if do featureeffects$new() and then plot() on separate lines even though thats how one of the smaple codes showed it. 
 sr_high <- plot(FeatureEffect$new(sr_predictor_high, feature = "sr")) + ggtitle("High")
 
+#predict values for the other mortality classes for the same variable
 sr_predictor_moderate <- Predictor$new(rfm, data = train_x, type = "prob", class = "Moderate")
 sr_moderate <- plot(FeatureEffect$new(sr_predictor_moderate, feature = "sr")) + ggtitle("Moderate")
 
@@ -352,20 +371,38 @@ sr_none <- plot(FeatureEffect$new(sr_predictor_none, feature = "sr")) + ggtitle(
 
 ggarrange(sr_high, sr_moderate, sr_low, sr_none, ncol = 2, nrow = 2)
 
+#plot all variables(for just one mortality class) : for some reason the function makes graphs for all the variables in the data frame, not just the ones in the random forest model. 
+tt <- FeatureEffects$new(sr_predictor_high, method = "ale")
+plot(tt)
 
+# plot all variables in the model (for just one mortality class): had to specify all the individual variables in the model to plot from the train data frame
+all_rfm_variables <- FeatureEffects$new(sr_predictor_low, method = "ale", features = c("cwd", "rain", 'tmax' , 'TPI_five' , 'dem_10m_zaca' , 'flow_accumulation' , 'sr' ,'slope', 'TWI', 'vpd_aug'))
+all_rfm_variables$plot()
+ggsave("ale_low.jpg", height = 9, width = 9)
 
+# plot a variables in ALE plot: https://medium.com/the-die-is-forecast/shining-a-light-on-the-black-box-of-machine-learning-2b49fe471cee
+plot(FeatureEffect$new(sr_predictor_low, feature = c("cwd", "dem_10m_zaca")))
 
-sr_df <- aml_sr$results
-ggplot(sr_df, aes(x = sr, y = .ale)) + geom_line()
+# another way to make ale plts with iml package (doesnt work): https://medium.com/the-die-is-forecast/shining-a-light-on-the-black-box-of-machine-learning-2b49fe471cee
+sr_predictor_low <- Predictor$new(rfm, data = train_x, type = "prob", class = "Low")
+ale_iml <- FeatureEffect$new(sr_predictor_low, feature = "sr")
+sr_df <- ale_iml$results
+ggplot(sr_df, aes(x = sr, y = .ale)) + geom_line() # not sure what .ale is. the samle code doesn't say, but the above codes work so whatever
+
+# another way to write the code: https://github.com/christophM/interpretable-ml-book/blob/6153b2ac0143f879bd4a856a1048545a40cd1a74/manuscript/05.4-agnostic-ale.Rmd
+FeatureEffects$new(sr_predictor_low, feature = "sr", method = "ale")$plot() +ggtitle("Low") #produces the same graph as above
+
 
 
 
 ```
 - get error when try to run the model on the test data instead of the train data. Think the data used in the model, needs to be the same data to do ALE plots.
 
-- How to interpret ALE plots:
-  - ale plots let us determine the effect that each individual input, isolated/regardless of all others, has on our output.
-  - By localizing the measurements via the use of windows, we are able to avoid including practically unlikely or impossible situations. For instance, in our model to predict the number of joggers in a day, temperature and time of year are likely highly correlated. By limiting our window in our ALE plot, we can ensure that we're not factoring in a scenario where the time of year is winter and the temperature is 35 degrees Celsius. We shouldn't be factoring in the model's prediction for this situation because it is certainly outside of any data set we will be using. ALE plots are able to avoid such situations and give us much more accurate results.
+- ale plots let us determine the effect that each individual input, isolated/regardless of all others, has on our output.
+
+- How to interpret ALE plots: not really sure since the papers/tutorials I've seen show how to interpret grpahs for quantitative response variables, but I assume since we indicate "type = prob" in the code that the y axis is the probability of a stand having that mortality class at specific value of the x variable
+
+- By localizing the measurements via the use of windows, we are able to avoid including practically unlikely or impossible situations. For instance, in our model to predict the number of joggers in a day, temperature and time of year are likely highly correlated. By limiting our window in our ALE plot, we can ensure that we're not factoring in a scenario where the time of year is winter and the temperature is 35 degrees Celsius. We shouldn't be factoring in the model's prediction for this situation because it is certainly outside of any data set we will be using. ALE plots are able to avoid such situations and give us much more accurate results.
 
 
 ### Random Forest Model with 3 mortality classes
@@ -425,7 +462,7 @@ for (i in 1:500)
   test <- do.call("rbind", list(polygon_data_low_test, polygon_data_moderate_test, polygon_data_high_test))
   
   #random forest model
-  rfm<-randomForest(three_class_mortality~ rain + tmax + TPI_five + dem_10m_zaca + flow_accumulation + sr + slope + TWI, data = train, ntree=500, importance=T, nscale=0)
+  rfm<-randomForest(three_class_mortality~ rain + tmax + TPI_five + dem_10m_zaca + flow_accumulation + sr + slope + TWI + cwd + vpd_aug, data = train, ntree=500, importance=T, nscale=0)
 
   #plot to visualize variable importance
   model_importance <- importance(rfm)
@@ -517,7 +554,7 @@ file.remove(here::here("Model Data Sheets and Code", "mcf test accuracy table_3 
 ```
 
 
-
+#### ALE Plots
 ```{r}
 train_x <- train[-which(names(train) == "three_class_mortality")]
 
@@ -532,6 +569,10 @@ sr_low <- plot(FeatureEffect$new(sr_predictor_low, feature = "sr")) + ggtitle("L
 
 ggarrange(sr_high, sr_moderate, sr_low, ncol = 2, nrow = 2)
 
+# all rfm variables
+all_rfm_variables <- FeatureEffects$new(sr_predictor_low, method = "ale", features = c("cwd", "rain", 'tmax' , 'TPI_five' , 'dem_10m_zaca' , 'flow_accumulation' , 'sr' ,'slope', 'TWI', 'vpd_aug'))
+all_rfm_variables$plot()
+ggsave("ale_low_3.jpg", height = 9, width = 9)
 
 
 ```
@@ -641,7 +682,7 @@ nsample4 = 125
 
 # set # of iterations to run 
 
-iteration = 50
+iteration = 500
 
 # lists to save outputs from for loop
 test_accuracy_list <- list()
@@ -799,7 +840,7 @@ Notes:
 nsample5 = 125
 
 #set number of foor loop iterations
-iteration1 = 100
+iteration1 = 500
 
 # sub-data: combine low and no mortality classes
 mcf_3 <- mcf %>%
