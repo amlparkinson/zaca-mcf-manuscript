@@ -971,6 +971,9 @@ low_mean_acc <- low %>%
   mutate (Low = as.numeric(Low),
           class_acc = Low / 292) %>% 
  summarise(mean = (sum(class_acc)/iteration)) # used this code before to get mean: summarise(mean = mean(class_acc))
+
+file.remove(here::here("Model Data Sheets and Code", "binomial model test accuracy table.csv"))
+
 ```
 
 
