@@ -21,14 +21,14 @@ library(ALEPlot)
 library(iml)
 
 mcf <- read.csv('Zaca MCF variables for model.csv') %>% 
-  select('drainage_assoication', 'ridge', 'mortality', 
+  select('drainage_association', 'ridge', 'mortality', 
          'prefire','mortality_qual', 'canopy_loss_success', 
          'canopy_loss_failure', 'postfire_canopy', 'postfire', 
          'Change_in_canopy_success', 'Change_in_canopy_failure', 
          'Change_Qualitative','high_mortality', 'area_scaled', 
          'dem_10m_zaca', 'flow_accumulation', 'sr', 'sr_new', 
          'rain', 'slope', 'tmax', 'tmean', 'tmin', 'TPI_five', 
-         'TPI_queen', 'TWI', 'fri', 'dem_scaled', 'southness', "cwd", "vpd_jan", "vpd_aug" ) 
+         'TPI_queen', 'TWI', 'fri', 'dem_scaled', 'southness', "cwd", "vpd_jan", "vpd_aug", "tc_mortality" ) 
  #mutate(mortality_qual= fct_relevel(mortality_qual, levels=c("None", "Low", "Moderate", "High")))
  # keep getting error (Outer names are only allowed for unnamed scalar atomic inputs) when order the levels, but the reordering works anyway (although it doesnt work with the ssame error in the binomial code. The code directly below works to reorder the levels without error)
 mcf$mortality_qual  <- factor(mcf$mortality_qual, levels = c("None", "Low", "Moderate", "High"))
@@ -165,9 +165,7 @@ mcf_sub_pca_plot
 
 ### Random Forest
 
-Which variables contribute to mortality?
 
-Literature review:
 
 ```{r}
 # model parameters---------------------------------------------
@@ -576,6 +574,134 @@ ggsave("ale_low_3.jpg", height = 9, width = 9)
 
 
 ```
+
+### Random Forest 
+
+
+```{r}
+# model parameters---------------------------------------------
+
+mcf_mod <- mcf %>% 
+  mutate(tc_mortality = case_when(
+    tc_mortality == 1 ~ "tc", #tc = type converted
+    tc_mortality == 0 ~ "not_tc"
+  )) %>% 
+  mutate(tc_mortality = as.factor(tc_mortality))
+
+# set sample size 
+nsample = 75
+
+# lists to save outputs from for loop
+test_accuracy_list <- list()
+
+```
+
+
+```{r}
+
+#random forest code---------------------------------------------------
+for (i in 1:50)
+{
+  
+  # divide data into equal # of observations --------------------
+  mcf_high <- mcf_mod[which(mcf_mod$tc_mortality == "tc"),]
+  mcf_low <- mcf_mod[which(mcf_mod$tc_mortality == "not_tc"),]
+
+  # pull random observations from the high class and separate
+  x_high <- sample(1:nrow(mcf_high), nsample , replace = FALSE)
+  polygon_data_high_train <- mcf_high[x_high,]
+  polygon_data_high_test <- mcf_high[-x_high,]
+  # pull random observations from the low class and separate
+  x_low <- sample(1:nrow(mcf_low), nsample , replace = FALSE)
+  polygon_data_low_train <- mcf_low[x_low,]
+  polygon_data_low_test <- mcf_low[-x_low,]
+
+  
+  # combine all random observations
+  train <- do.call("rbind", list(polygon_data_low_train, polygon_data_high_train))
+  # recombine classes that were not pulled
+  test <- do.call("rbind", list(polygon_data_low_test, polygon_data_high_test))
+  
+  #random forest model
+  rfm<-randomForest(tc_mortality~ rain + tmax + TPI_five + dem_10m_zaca + flow_accumulation + sr + slope + TWI + cwd + vpd_aug + ridge + drainage_association, data = train, ntree=500, importance=T, nscale=0)
+  
+  #plot to visualize variable importance
+  #varImpPlot(rfm)
+  model_importance <- importance(rfm)
+
+  #predcit test data
+  pp<-predict(rfm, test)
+  
+  #test data accuracy
+  tabb<- table(pp, test$tc_mortality)
+  acc<-1-sum(diag(tabb))/sum(tabb) # % missclassified 
+  test_accuracy <-(1-acc)*100 #model accuracy
+  
+  # lists to save model outputs
+  test_accuracy_list <- append(test_accuracy_list, test_accuracy)
+  write.table(model_importance, file="rfm model tc importance.csv", sep=",",col.names=NA, append=T) 
+  write.table(tabb, file = "mcf tc test accuracy table.csv", sep=",",col.names=NA, append=T)
+}
+
+
+```
+
+#### Model Results
+```{r}
+
+# overall average model accuracy -----------------------------------------------------
+
+accuracy_df <- as.data.frame(unlist(test_accuracy_list))
+mean_test_accuracy_1 <- accuracy_df %>% 
+  summarize(mean_accuracy = mean(unlist(test_accuracy_list)))
+
+#average model importance ---------------------------------------------------------
+
+model_importance_tidy <- read_csv(here("Model Data Sheets and Code", "rfm model tc importance.csv")) %>% 
+  clean_names() %>% 
+  filter(not_tc != "not_tc") %>% 
+  rename (variables = x1) %>% 
+  mutate (variables = str_to_lower(variables)) %>% 
+  mutate (not_tc = as.numeric(not_tc),
+          tc = as.numeric(tc),
+          mean_decrease_accuracy = as.numeric(mean_decrease_accuracy),
+          mean_decrease_gini = as.numeric(mean_decrease_gini)
+          )
+
+# model importance summary statistics
+model_importance_summary <- model_importance_tidy %>% 
+  group_by(variables) %>% 
+  summarize (not_tc_mean = mean(not_tc),
+             tc_mean = mean(tc),
+             mean_dec_accuracy_mean = mean(mean_decrease_accuracy),
+             mean_decrease_gini_mean = mean(mean_decrease_gini)
+  )
+file.remove(here::here("Model Data Sheets and Code", "rfm model tc importance.csv"))
+# average class accuracy ---------------------------------------------------------
+
+not_tc <- read_csv("mcf tc test accuracy table.csv") 
+tc <- read_csv("mcf tc test accuracy table.csv")
+
+not_tc_acc <- not_tc %>% 
+  select (X1, not_tc) %>% 
+  drop_na() %>% 
+  filter (X1 == "not_tc") %>% 
+  mutate (not_tc = as.numeric(not_tc),
+          class_acc = not_tc / (636-nsample)) %>% 
+  summarise(mean = mean(class_acc))
+
+tc_acc <- tc %>% 
+  select (X1, tc) %>% 
+  drop_na() %>% 
+  filter (X1 == "tc") %>%
+  mutate (tc = as.numeric(tc),
+          class_acc = tc / (99-nsample)) %>% 
+  summarise(mean = mean(class_acc))
+
+file.remove(here::here("Model Data Sheets and Code", "mcf tc test accuracy table.csv"))
+
+```
+ Didnt get to ALE plots. But model importance shows that slope and elevation are highly important for the type converted class. Not surprised because a lot of stands with the highest mortality were at the top of Big pine mountain which was at the highest elevation in our study area. This could indicate that this is trend is specific to this fire situation and does not necessarily predict that stands with high mortality are highly likely to occur in high elevation zones. 
 
 
 ### Random Forest via Cross Validation
