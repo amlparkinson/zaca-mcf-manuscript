@@ -19,31 +19,54 @@ library(janitor)
 library(ggfortify)
 library(ALEPlot)
 library(iml)
+library(ROCR)
+library(pROC)
 
 mcf <- read.csv('Zaca MCF variables for model.csv') %>% 
-  select('drainage_association', 'ridge', 'mortality', 
-         'prefire','mortality_qual', 'canopy_loss_success', 
-         'canopy_loss_failure', 'postfire_canopy', 'postfire', 
-         'Change_in_canopy_success', 'Change_in_canopy_failure', 
-         'Change_Qualitative','high_mortality', 'area_scaled', 
-         'dem_10m_zaca', 'flow_accumulation', 'sr', 'sr_new', 
-         'rain', 'slope', 'tmax', 'tmean', 'tmin', 'TPI_five', 
-         'TPI_queen', 'TWI', 'fri', 'dem_scaled', 'southness', "cwd", "vpd_jan", "vpd_aug", "tc_mortality" ) 
+  mutate(mortality_qual= fct_relevel(mortality_qual, levels=c("None", "Low", "Moderate", "High"))) %>% 
+  # mutate(dnbr_qualitative = case_when(
+  #   dnbr < 0.1 ~ "unburned",
+  #   dnbr < 0.27 ~ "low",
+  #   dnbr < 0.66 ~ "moderate",
+  #   dnbr > 0.66 ~ "high")) %>% 
+  # mutate(dnbr_qualitative = as.factor(dnbr_qualitative),
+  #        dnbr_qualitative = fct_relevel(dnbr_qualitative, levels=c("high", "moderate", "low", "unburned"))) %>% 
+  mutate(aspect_transformed = (1-cos((2*pi*aspect)/360))/2) %>% 
+  mutate(three_class_mortality = case_when(
+    mortality_qual %in% "High" ~ "High",
+    mortality_qual %in% "Moderate" ~ "Moderate",
+    mortality_qual %in% c("Low", "None") ~ "Low")) %>% 
+  mutate(three_class_mortality = as.factor(three_class_mortality)) %>% 
+  mutate(three_class_mortality= fct_relevel(three_class_mortality, 
+                                     levels=c("Low", "Moderate", "High")))
+
+
+
  #mutate(mortality_qual= fct_relevel(mortality_qual, levels=c("None", "Low", "Moderate", "High")))
  # keep getting error (Outer names are only allowed for unnamed scalar atomic inputs) when order the levels, but the reordering works anyway (although it doesnt work with the ssame error in the binomial code. The code directly below works to reorder the levels without error)
-mcf$mortality_qual  <- factor(mcf$mortality_qual, levels = c("None", "Low", "Moderate", "High"))
- 
+
 
 ```
+for dnbr classes see: https://www.int-arch-photogramm-remote-sens-spatial-inf-sci.net/XLI-B8/763/2016/isprs-archives-XLI-B8-763-2016.pdf
+
+for aspect transformation: https://esajournals.onlinelibrary.wiley.com/doi/full/10.1890/07-0539.1 appendix B; transformed Aspect = [1 - cos(2piAspect/360)]/2. This formula is similar (but not identical) to that used by Roberts and Cooper (1989). The transformed aspect values lie in the interval from 0 to1. Values near 0 represent aspects close to due north, while values near 1 represent aspects close to due south. East and west are treated identically with transformed aspect values of 0.5.
+
 
 ### Sample Size for each mortality class
 ```{r}
 mortality_count <- mcf %>% 
   group_by(mortality_qual) %>% 
   count()
+
+tc_count <- mcf %>% 
+  group_by(tc_mortality) %>% 
+  count() # 99 stands with type conversion, 636 with no type conversion
   
 ```
-
+None: 251
+Low: 166
+mod: 160
+high: 158
 
 ### Data Spread
 
@@ -52,70 +75,77 @@ solar_rad_mcf <- ggplot(mcf, aes(x=mortality_qual, y=sr, fill=mortality_qual))+
   geom_violin(alpha=0.5, show.legend=F) +
   theme_classic() +
   labs(x="Mortality", y="Solar Radiation") +
-  scale_fill_manual(values=c("red", "orange", "yellow", "green")) +
+  scale_fill_manual(values=c("green", "yellow", "orange", "red")) +
   coord_flip()
 
 tmax_mcf <- ggplot(mcf, aes(x=mortality_qual, y=tmax, fill=mortality_qual))+
   geom_violin(alpha=0.5, show.legend=F) +
   theme_classic() +
   labs(x="Mortality", y="Max Aug Temp (celcius)") +
-  scale_fill_manual(values=c("red", "orange", "yellow", "green")) +
+  scale_fill_manual(values=c("green", "yellow", "orange", "red")) +
   coord_flip()
 
 rain_mcf <- ggplot(mcf, aes(x=mortality_qual, y=rain, fill=mortality_qual))+
   geom_violin(alpha=0.5, show.legend=F) +
   theme_classic() +
   labs(x="Mortality", y="Precipitation") +
-  scale_fill_manual(values=c("red", "orange", "yellow", "green")) +
+  scale_fill_manual(values=c("green", "yellow", "orange", "red")) +
   coord_flip()
 
 tpi_mcf <- ggplot(mcf, aes(x=mortality_qual, y=TPI_five, fill=mortality_qual))+
   geom_violin(alpha=0.5, show.legend=F) +
   theme_classic() +
   labs(x="Mortality", y="TPI") +
-  scale_fill_manual(values=c("red", "orange", "yellow", "green")) +
+  scale_fill_manual(values=c("green", "yellow", "orange", "red")) +
   coord_flip()
 
 twi_mcf <- ggplot(mcf, aes(x=mortality_qual, y=TWI, fill=mortality_qual))+
   geom_violin(alpha=0.5, show.legend=F) +
   theme_classic() +
   labs(x="Mortality", y="TWI") +
-  scale_fill_manual(values=c("red", "orange", "yellow", "green")) +
+  scale_fill_manual(values=c("green", "yellow", "orange", "red")) +
   coord_flip()
 
 slope_mcf <- ggplot(mcf, aes(x=mortality_qual, y=slope, fill=mortality_qual))+
   geom_violin(alpha=0.5, show.legend=F) +
   theme_classic() +
   labs(x="Mortality", y="Slope") +
-  scale_fill_manual(values=c("red", "orange", "yellow", "green")) +
+  scale_fill_manual(values=c("green", "yellow", "orange", "red")) +
   coord_flip()
 
 elev_mcf <- ggplot(mcf, aes(x=mortality_qual, y=dem_10m_zaca, fill=mortality_qual))+
   geom_violin(alpha=0.5, show.legend=F) +
   theme_classic() +
   labs(x="Mortality", y="Elevation") +
-  scale_fill_manual(values=c("red", "orange", "yellow", "green")) +
+  scale_fill_manual(values=c("green", "yellow", "orange", "red")) +
   coord_flip()
 
 cwd_mcf <- ggplot(mcf, aes(x=mortality_qual, y=cwd, fill=mortality_qual))+
   geom_violin(alpha=0.5, show.legend=F) +
   theme_classic() +
   labs(x="Mortality", y="CWD") +
-  scale_fill_manual(values=c("red", "orange", "yellow", "green")) +
+  scale_fill_manual(values=c("green", "yellow", "orange", "red")) +
   coord_flip()
 
 aug_vpd_mcf <- ggplot(mcf, aes(x=mortality_qual, y=vpd_aug, fill=mortality_qual))+
   geom_violin(alpha=0.5, show.legend=F) +
   theme_classic() +
   labs(x="Mortality", y="Aug VPD") +
-  scale_fill_manual(values=c("red", "orange", "yellow", "green")) +
+  scale_fill_manual(values=c("green", "yellow", "orange", "red")) +
   coord_flip()
 
 jan_vpd_mcf <- ggplot(mcf, aes(x=mortality_qual, y=vpd_jan, fill=mortality_qual))+
   geom_violin(alpha=0.5, show.legend=F) +
   theme_classic() +
   labs(x="Mortality", y="Jan VPD") +
-  scale_fill_manual(values=c("red", "orange", "yellow", "green")) +
+  scale_fill_manual(values=c("green", "yellow", "orange", "red")) +
+  coord_flip()
+
+ggplot(mcf, aes(x=mortality_qual, y=ndvi, fill=mortality_qual))+
+  geom_violin(alpha=0.5, show.legend=F) +
+  theme_classic() +
+  labs(x="Mortality", y="NDVI") +
+  scale_fill_manual(values=c("green", "yellow", "orange", "red")) +
   coord_flip()
 
 ggarrange(solar_rad_mcf, rain_mcf, slope_mcf, elev_mcf, tmax_mcf, tpi_mcf, twi_mcf, cwd_mcf, aug_vpd_mcf, jan_vpd_mcf)
@@ -129,7 +159,7 @@ Interestingly, stands with higher elevation had higher mortality and stands with
 
 ```{r}
 mcf_sub <- mcf %>% 
-  select (dem_10m_zaca:sr, rain:tmax, TPI_five, TWI, cwd:vpd_aug) %>% 
+  select (dem_10m_zaca:sr, rain:tmax, TPI_five, TWI, cwd:aspect_transformed) %>% 
   rename ('Elevation' = 'dem_10m_zaca',
           'Slope' = 'slope',
           'TPI' = 'TPI_five',
@@ -163,10 +193,42 @@ mcf_sub_pca_plot
 ```
 
 
-### Random Forest
+### Random Forest: ALL observations
+
+to get a stable variable importance. The other models result in very unstable variable importance cmeasures which shuldnt happen with RF but is occuring bc the training data used for each run changes. 
+
+```{r}
+#four class mortality
+for (i in 1:10) {
+  
+rfm <- randomForest(mortality_qual ~ rain + tmax + TPI_five + dem_10m_zaca + flow_accumulation + sr + slope + TWI + cwd + vpd_aug + ndvi, data = mcf, ntree=1500, importance=T, nscale=0)
+
+rfm  
+
+#plot to visualize variable importance
+varImpPlot(rfm)
+model_importance <- importance(rfm)
+
+}
+
+#3 class mortality
+for (i in 1:10) {
+  
+rfm <- randomForest(three_class_mortality ~ rain + tmax + TPI_five + dem_10m_zaca + flow_accumulation + sr + slope + TWI + cwd + vpd_aug + ndvi, data = mcf, ntree=1500, importance=T, nscale=0)
+
+rfm  
+
+#plot to visualize variable importance
+varImpPlot(rfm)
+model_importance <- importance(rfm)
+
+}
+
+```
+So 1500 trees reuslts in more stable importance values for each model. The model with 3 mortality classes has a better OOB.
 
 
-
+# Random Forest: 4 mortality classes
 ```{r}
 # model parameters---------------------------------------------
 
@@ -215,7 +277,7 @@ for (i in 1:500)
   test <- do.call("rbind", list(polygon_data_none_test, polygon_data_low_test, polygon_data_moderate_test, polygon_data_high_test))
   
   #random forest model
-  rfm<-randomForest(mortality_qual~ rain + tmax + TPI_five + dem_10m_zaca + flow_accumulation + sr + slope + TWI + cwd + vpd_aug, data = train, ntree=500, importance=T, nscale=0)
+  rfm<-randomForest(mortality_qual~ rain + tmax + TPI_five + dem_10m_zaca + flow_accumulation + sr + slope + TWI + cwd + vpd_aug + ndvi, data = train, ntree=500, importance=T, nscale=0)
   
   #plot to visualize variable importance
   #varImpPlot(rfm)
@@ -403,23 +465,12 @@ FeatureEffects$new(sr_predictor_low, feature = "sr", method = "ale")$plot() +ggt
 - By localizing the measurements via the use of windows, we are able to avoid including practically unlikely or impossible situations. For instance, in our model to predict the number of joggers in a day, temperature and time of year are likely highly correlated. By limiting our window in our ALE plot, we can ensure that we're not factoring in a scenario where the time of year is winter and the temperature is 35 degrees Celsius. We shouldn't be factoring in the model's prediction for this situation because it is certainly outside of any data set we will be using. ALE plots are able to avoid such situations and give us much more accurate results.
 
 
-### Random Forest Model with 3 mortality classes
+### Random Forest Model: 3 mortality classes
 
 No and low mortality are pretty similar and both would be ideal for land managers. 
 
 ```{r}
-# model parameters and sub data -----------------------------------------------------------
-
-# sub data 
-mcf_3 <- mcf %>%
-  mutate(three_class_mortality = case_when(
-    mortality_qual %in% "High" ~ "High",
-    mortality_qual %in% "Moderate" ~ "Moderate",
-    mortality_qual %in% c("Low", "None") ~ "Low"
-  )) %>% 
-  mutate(three_class_mortality = as.factor(three_class_mortality)) %>% 
-  mutate(three_class_mortality= fct_relevel(three_class_mortality, 
-                                     levels=c("Low", "Moderate", "High")))
+# model parameters ------------------------------
 
 # set sample size 
 nsample1 = 125
@@ -432,14 +483,14 @@ test_accuracy_list <- list()
 ```{r}
 
 #random forest code---------------------------------------------------
-for (i in 1:500)
+for (i in 1:5)
 {
   
   # divide data into equal # of observations --------------------
   
-  mcf_high <- mcf_3[which(mcf_3$three_class_mortality == "High"),]
-  mcf_low <- mcf_3[which(mcf_3$three_class_mortality == "Low"),]
-  mcf_moderate <- mcf_3[which(mcf_3$three_class_mortality == "Moderate"),]
+  mcf_high <- mcf[which(mcf$three_class_mortality == "High"),]
+  mcf_low <- mcf[which(mcf$three_class_mortality == "Low"),]
+  mcf_moderate <- mcf[which(mcf$three_class_mortality == "Moderate"),]
   
   # pull random observations from the high class and separate
   x_high <- sample(1:nrow(mcf_high), nsample1 , replace = FALSE)
@@ -460,12 +511,11 @@ for (i in 1:500)
   test <- do.call("rbind", list(polygon_data_low_test, polygon_data_moderate_test, polygon_data_high_test))
   
   #random forest model
-  rfm<-randomForest(three_class_mortality~ rain + tmax + TPI_five + dem_10m_zaca + flow_accumulation + sr + slope + TWI + cwd + vpd_aug, data = train, ntree=500, importance=T, nscale=0)
+  rfm<-randomForest(three_class_mortality~ rain + tmax + TPI_five + dem_10m_zaca + ndvi + sr + slope + TWI + cwd + vpd_aug, data = train, ntree=500, importance=T, nscale=0)
 
   #plot to visualize variable importance
   model_importance <- importance(rfm)
-  
-  #varImpPlot(rfm)
+  varImpPlot(rfm)
   
   #predcit test data
   pp<-predict(rfm, test)
@@ -623,10 +673,10 @@ for (i in 1:50)
   test <- do.call("rbind", list(polygon_data_low_test, polygon_data_high_test))
   
   #random forest model
-  rfm<-randomForest(tc_mortality~ rain + tmax + TPI_five + dem_10m_zaca + flow_accumulation + sr + slope + TWI + cwd + vpd_aug + ridge + drainage_association, data = train, ntree=500, importance=T, nscale=0)
+  rfm <- randomForest(tc_mortality ~ rain + tmax + TPI_five + dem_10m_zaca + flow_accumulation + sr + slope + TWI + cwd + vpd_aug + ridge + drainage_association + ndvi, data = train, ntree=1500, importance=T, nscale=0)
   
   #plot to visualize variable importance
-  #varImpPlot(rfm)
+  varImpPlot(rfm)
   model_importance <- importance(rfm)
 
   #predcit test data
@@ -652,7 +702,7 @@ for (i in 1:50)
 # overall average model accuracy -----------------------------------------------------
 
 accuracy_df <- as.data.frame(unlist(test_accuracy_list))
-mean_test_accuracy_1 <- accuracy_df %>% 
+mean_model_accuracy_1 <- accuracy_df %>% 
   summarize(mean_accuracy = mean(unlist(test_accuracy_list)))
 
 #average model importance ---------------------------------------------------------
@@ -702,6 +752,16 @@ file.remove(here::here("Model Data Sheets and Code", "mcf tc test accuracy table
 
 ```
  Didnt get to ALE plots. But model importance shows that slope and elevation are highly important for the type converted class. Not surprised because a lot of stands with the highest mortality were at the top of Big pine mountain which was at the highest elevation in our study area. This could indicate that this is trend is specific to this fire situation and does not necessarily predict that stands with high mortality are highly likely to occur in high elevation zones. 
+
+#### ROC and AUC
+```{r}
+# code: https://stats.stackexchange.com/questions/188616/how-can-we-calculate-roc-auc-for-classification-algorithm-such-as-random-forest
+rfm_roc <-  roc(train$tc_mortality, rfm$votes[,1])
+plot(rfm_roc) # plot comes out a little weird
+auc(rfm_roc)
+
+```
+
 
 
 ### Random Forest via Cross Validation
@@ -969,7 +1029,7 @@ nsample5 = 125
 iteration1 = 500
 
 # sub-data: combine low and no mortality classes
-mcf_3 <- mcf %>%
+mcf <- mcf %>%
   mutate(mortality_qual_3 = case_when(
     mortality_qual %in% c("None", "Low") ~ "Low",
     mortality_qual == "Moderate" ~ "Moderate",
@@ -986,8 +1046,8 @@ mcf_3 <- mcf %>%
     canopy_loss_failure == "250" ~ "250"
   ))
 
-mcf_3$canopy_loss_success_3 <- factor(mcf_3$canopy_loss_success_3)
-mcf_3$canopy_loss_failure_3 <- factor(mcf_3$canopy_loss_failure_3)
+mcf$canopy_loss_success_3 <- factor(mcf$canopy_loss_success_3)
+mcf$canopy_loss_failure_3 <- factor(mcf$canopy_loss_failure_3)
 
 # lists to save outputs from for loop
 
@@ -1001,9 +1061,9 @@ test_accuracy_list <- list()
 
 for (i in 1:iteration1) {
 # train and test data 
-  mcf_high <- mcf_3[which(mcf_3 $ mortality_qual_3 == "High"),]
-  mcf_low <- mcf_3[which(mcf_3 $ mortality_qual_3 == "Low"),]
-  mcf_moderate <- mcf_3[which(mcf_3 $ mortality_qual_3 == "Moderate"),]
+  mcf_high <- mcf[which(mcf $ mortality_qual_3 == "High"),]
+  mcf_low <- mcf[which(mcf $ mortality_qual_3 == "Low"),]
+  mcf_moderate <- mcf[which(mcf $ mortality_qual_3 == "Moderate"),]
 
   # pull random observations from the high class and separate
   x_high <- sample(1:nrow(mcf_high), nsample5, replace = FALSE)
