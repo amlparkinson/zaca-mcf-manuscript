@@ -38,7 +38,8 @@ mcf <- read.csv('Zaca MCF variables for model.csv') %>%
     mortality_qual %in% c("Low", "None") ~ "Low")) %>% 
   mutate(three_class_mortality = as.factor(three_class_mortality)) %>% 
   mutate(three_class_mortality= fct_relevel(three_class_mortality, 
-                                     levels=c("Low", "Moderate", "High")))
+                                     levels=c("Low", "Moderate", "High"))) %>% 
+  mutate(tc_mortality = as.factor(tc_mortality))
 
 
 
@@ -190,6 +191,107 @@ mcf_sub_pca_plot <- autoplot(mcf_sub_pca,
 
 mcf_sub_pca_plot
 
+```
+
+### Random Forest forced sample sizes
+
+https://stats.stackexchange.com/questions/457451/how-r-randomforest-sampsize-works
+
+tc_mortality 1 = type converted
+tc_mortality 0 = "not_tc"
+
+using for loop to generate several graphs so its easier to compare them
+```{r}
+
+for (i in 1:10) {
+  
+rfm <- randomForest(tc_mortality ~ rain + tmax + TPI_five + dem_10m_zaca + flow_accumulation + sr + slope + TWI + cwd + vpd_aug + vpd_jan + drainage_association + ndvi, 
+                    data = mcf, 
+                    sampsize = c('1' = 99, '0' = 99), 
+                    ntree=1500, 
+                    importance=T,
+                    replace = T)
+# OOB and importance
+rfm
+importance(rfm)
+#plot to visualize variable importance
+varImpPlot(rfm)
+
+}
+
+```
+variable importance seems stable AND class accuracy is high and equal between classes!!
+
+#### ROC and AUC
+```{r}
+# code: https://stats.stackexchange.com/questions/188616/how-can-we-calculate-roc-auc-for-classification-algorithm-such-as-random-forest
+rfm_roc <-  roc(mcf$tc_mortality, rfm$votes[,1])
+plot(rfm_roc) # plot comes out a little weird
+auc(rfm_roc)
+
+
+
+```
+
+## PDP v. ALE
+
+```{r}
+#PDP
+a <- partialPlot(rfm, as.data.frame(mcf), ndvi, "0") #0=not type converted
+b <- partialPlot(rfm, as.data.frame(mcf), ndvi, "1", col="red") #1=type converted
+lines(a, col="green")
+
+a <- partialPlot(rfm, as.data.frame(mcf), slope, "0") #0=not type converted
+b <- partialPlot(rfm, as.data.frame(mcf), slope, "1", col="red") #1=type converted
+lines(a, col="green")
+
+a <- partialPlot(rfm, as.data.frame(mcf), sr, "0") #0=not type converted
+b <- partialPlot(rfm, as.data.frame(mcf), sr, "1", col="red") #1=type converted
+lines(a, col="green")
+
+#ale (see detailed notes in ALE Plots code chunk below; not working right now)
+train_x <- mcf[-which(names(mcf) == "tc_mortality")]
+ndvi_predictor_notTC <- Predictor$new(rfm, data = train_x, y = mcf$tc_mortality, type = "prob", class = "0")
+ndvi_not <- plot(FeatureEffect$new(ndvi_predictor_notTC, feature = "ndvi")) + ggtitle("not TC")
+
+#predict values for the other mortality classes for the same variable
+ndvi_predictor_tc <- Predictor$new(rfm, data = train_x, type = "prob", class = "1")
+sr_moderate <- plot(FeatureEffect$new(ndvi_predictor_tc, feature = "ndvi")) + ggtitle("TC")
+```
+so looking at the 3 most important variables for type conversino plots, all of the probabilities are below zero. only the not type converted stands have probabilities above 0, with some values of the explanatory variable having very high probabilities. So what this tells me is the model CANNOT distinguish type converted stands from non type converted stands. 
+
+### Random Forest and forced sample sizes with training and test data
+
+hmmmm. not sure how to do this with training and test data since the train/test data frames will have different quantities of the type conversion classes each time. if i do it the way I have been doing it below, then variable importance is too unstable. even using my equal distribution sample size code and adding in the sampsize function results in unstable variable importance. 
+```{r}
+#train and test data 
+sample <- sample(1:nrow(mcf), size = 0.75*nrow(mcf))
+train <- mcf[sample, ]
+test  <- mcf[-sample, ]
+ 
+ 
+ 
+for (i in 1:10) {
+rfm <- randomForest(tc_mortality ~ rain + tmax + TPI_five + dem_10m_zaca + flow_accumulation + sr + slope + TWI + cwd + vpd_aug + vpd_jan + drainage_association + ndvi, 
+                    data = mcf, 
+                    sampsize = c('1' = 99, '0' = 99), 
+                    ntree=1500, 
+                    importance=T,
+                    replace = T)
+rfm
+
+#plot to visualize variable importance
+varImpPlot(rfm)
+#model_importance <- importance(rfm)
+importance(rfm)
+}
+#predcit test data
+pp<-predict(rfm, test)
+  
+#test data accuracy
+tabb<- table(pp, test$tc_mortality)
+acc<-1-sum(diag(tabb))/sum(tabb) # % missclassified 
+test_accuracy <-(1-acc)*100 #model accuracy
 ```
 
 
@@ -650,7 +752,7 @@ test_accuracy_list <- list()
 ```{r}
 
 #random forest code---------------------------------------------------
-for (i in 1:50)
+for (i in 1:15)
 {
   
   # divide data into equal # of observations --------------------
@@ -673,7 +775,7 @@ for (i in 1:50)
   test <- do.call("rbind", list(polygon_data_low_test, polygon_data_high_test))
   
   #random forest model
-  rfm <- randomForest(tc_mortality ~ rain + tmax + TPI_five + dem_10m_zaca + flow_accumulation + sr + slope + TWI + cwd + vpd_aug + ridge + drainage_association + ndvi, data = train, ntree=1500, importance=T, nscale=0)
+  rfm <- randomForest(tc_mortality ~ rain + tmax + TPI_five + dem_10m_zaca + flow_accumulation + sr + slope + TWI + cwd + vpd_aug + ridge + drainage_association + ndvi, data = train, ntree=1500, importance=T, nscale=0, sampsize = c('tc' = 75, 'not_tc' = 75), replace = T)
   
   #plot to visualize variable importance
   varImpPlot(rfm)
@@ -688,9 +790,9 @@ for (i in 1:50)
   test_accuracy <-(1-acc)*100 #model accuracy
   
   # lists to save model outputs
-  test_accuracy_list <- append(test_accuracy_list, test_accuracy)
-  write.table(model_importance, file="rfm model tc importance.csv", sep=",",col.names=NA, append=T) 
-  write.table(tabb, file = "mcf tc test accuracy table.csv", sep=",",col.names=NA, append=T)
+  # test_accuracy_list <- append(test_accuracy_list, test_accuracy)
+  # write.table(model_importance, file="rfm model tc importance.csv", sep=",",col.names=NA, append=T) 
+  # write.table(tabb, file = "mcf tc test accuracy table.csv", sep=",",col.names=NA, append=T)
 }
 
 
@@ -761,6 +863,7 @@ plot(rfm_roc) # plot comes out a little weird
 auc(rfm_roc)
 
 ```
+
 
 
 
@@ -1161,6 +1264,7 @@ low_mean_acc <- low %>%
 file.remove(here::here("Model Data Sheets and Code", "binomial model test accuracy table.csv"))
 
 ```
+
 
 
 
