@@ -53,6 +53,45 @@ for dnbr classes see: https://www.int-arch-photogramm-remote-sens-spatial-inf-sc
 for aspect transformation: https://esajournals.onlinelibrary.wiley.com/doi/full/10.1890/07-0539.1 appendix B; transformed Aspect = [1 - cos(2piAspect/360)]/2. This formula is similar (but not identical) to that used by Roberts and Cooper (1989). The transformed aspect values lie in the interval from 0 to1. Values near 0 represent aspects close to due north, while values near 1 represent aspects close to due south. East and west are treated identically with transformed aspect values of 0.5.
 
 
+### Methods background
+
+using forced sample sizes (see https://stats.stackexchange.com/questions/457451/how-r-randomforest-sampsize-works) because the distribution of observations in each mortality class is very uneven and results in a model that severely underpredicts observations in the mortality class with few observations. Bc of the small sample size, we will not be using training and test data (and bc RF basically creates its own train/test data).
+
+Different RF trials:
+
+  - Mixed confier forests
+    + response variable: type conversion
+    + response variable: 4 mortality classes (none, low, momderate, high)
+    + response variable: 3 mortality classes (none/low, moderate, high)
+    + response variable: 2 mortality classes (none/low/moderate, high)
+    + response variable: rdnbr
+  - Coulter pines 
+    + response variable: rdnbr
+  - mixed conifer forests and coulter pines combined
+    + response variable: rdnbr
+
+Note: manual classification of mortality and type conversion for the coulter pines was not done. Aint no one got time for that
+
+The type conversion mortality classes-
+tc_mortality 0 = "not_tc" (n=99)
+tc_mortality 1 = type converted (n=>600)
+
+### Goals/Questions
+
+1. Can the mcf model distinguish between type conversion and the other mortality types? 
+  - so far, no! so variable importance is not meaningful for that model
+
+2. Which variables contribute to type conversion of MCFs?
+
+3. How well does rdnbr compare to manual estimates of mortality? 
+
+4. How does using rdnbr and manually derived mortality compare as a response variable?
+
+5. Which variables contribute to high/low mortality? high/low rdnbr?
+
+5. Does conifer type contribute to different variable importances?
+
+
 ### Sample Size for each mortality class
 ```{r}
 mortality_count <- mcf %>% 
@@ -149,6 +188,13 @@ ggplot(mcf, aes(x=mortality_qual, y=ndvi, fill=mortality_qual))+
   scale_fill_manual(values=c("green", "yellow", "orange", "red")) +
   coord_flip()
 
+ggplot(mcf, aes(x=ndvi, y=rdnbr_2007)) +
+  geom_point()
+
+ndvi_rdnbr_corr <- lm(rdnbr_2007~ndvi, data=mcf)
+summary(ndvi_rdnbr_corr)
+
+
 ggarrange(solar_rad_mcf, rain_mcf, slope_mcf, elev_mcf, tmax_mcf, tpi_mcf, twi_mcf, cwd_mcf, aug_vpd_mcf, jan_vpd_mcf)
 #ggsave("zaca MCF most important variable violin plots.png")
 ```
@@ -193,14 +239,9 @@ mcf_sub_pca_plot
 
 ```
 
-### Random Forest forced sample sizes
+### RF manual mortality: 4 classes (none, low, moderate, high)
 
-https://stats.stackexchange.com/questions/457451/how-r-randomforest-sampsize-works
-
-tc_mortality 1 = type converted
-tc_mortality 0 = "not_tc"
-
-using for loop to generate several graphs so its easier to compare them
+Just using for loop to generate several graphs so its easier to compare them and make sure importance is stable
 ```{r}
 
 for (i in 1:10) {
