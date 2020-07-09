@@ -146,7 +146,8 @@ tc_mortality 1 = type converted (n=>600)
 #mcf -------------------------------------------------------------------
 mortality_count <- mcf %>% 
   group_by(mortality_qual) %>% 
-  count()
+  count() %>% 
+  rename(manual_mortality=mortality_qual)
 
 tc_count <- mcf %>% 
   group_by(tc_mortality) %>% 
@@ -154,20 +155,24 @@ tc_count <- mcf %>%
 
 rdnbr_mcf <- mcf %>% 
   group_by(rdnbr_qualitative) %>% 
-  count()
+  count() %>% 
+  rename(mcf_rdnbr = rdnbr_qualitative)
 
 dnbr_mcf <- mcf %>% 
   group_by(dnbr_qualitative) %>% 
-  count()
+  count() %>% 
+  rename(mcf_dnbr = dnbr_qualitative)
 
 #coulter ------------------------------------------------------------------- 
 rdnbr_pico <- pico %>% 
   group_by(rdnbr_qualitative) %>% 
-  count()
+  count() %>% 
+  rename(pico_rdnbr =rdnbr_qualitative)
 
 dnbr_pico <- pico %>% 
   group_by(dnbr_qualitative) %>% 
-  count()
+  count() %>% 
+  rename(pico_dnbr = dnbr_qualitative)
 
 # all -------------------------------------------------------------------
 all_sample_size <- cbind(mortality_count, rdnbr_mcf, dnbr_mcf, rdnbr_pico, dnbr_pico)
@@ -199,16 +204,17 @@ ggplot(mortality_count, aes(x = mortality_qual, y = n, fill = mort_type)) + geom
 ```{r}
 ##plot -------------------------------------------------------------------------------
 
-# all
+# mcf
 ggplot(mcf, aes(x = tc_mortality, y = rdnbr_2007)) +
   geom_jitter()
 
-#by prefire cover
+##by prefire cover
 ggplot(mcf, aes(x = tc_mortality, y = rdnbr_2007)) +
   geom_jitter() +
   facet_wrap(~prefire)
 
-## use lm to get a rdnbr threshold for the type converter stands? ---------------------
+
+## use lm to get a rdnbr threshold for the type converter stands? pretty sure thats not what you meant chris ---------------------
 
 threshold <- lm(rdnbr_2007 ~ tc_mortality, data = mcf)
 summary(threshold) #r2=0.53
@@ -228,12 +234,17 @@ max_nonTC <- mcf %>%
   #non-type converted=1160.433 ; type converted=1414.205
 
 # potential type conversion threshold --------------------------------------------
-
+## pretty sure i did NOT followed the correct steps to pick this threshold. 
 tc_threshold <- mcf %>% 
   mutate(rdnbr_tc_threshold = case_when(
     rdnbr_2007 <1160 ~ "not_tc",
     rdnbr_2007 >1160 ~ "tc"
-  ))
+  )) %>% 
+  mutate(rdnbr_tc_threshold = as.factor(rdnbr_tc_threshold))
+
+tc_threshold_count <- tc_threshold %>% 
+  group_by(rdnbr_tc_threshold) %>% 
+  count() # not tc = 702, tc = 33
 
 ```
 well there some overlap with the the 2 classes, but there is also a clear point that the non type converted stands reach (rdnbr=1160) that many type converted stands surpass. 
@@ -396,7 +407,7 @@ mcf_sub_pca_plot
 ```{r}
 for (i in 1:10) {
   
-rfm <- randomForest(mortality_qual ~ rain + tmax + TPI_five + dem_10m_zaca + flow_accumulation + sr + slope + TWI + cwd + vpd_aug + vpd_jan + aspect_transformed, 
+rfm <- randomForest(mortality_qual ~ rain + tmax + TPI_five + dem_10m_zaca + flow_accumulation + sr + slope + TWI + cwd + vpd_aug + vpd_jan + aspect_transformed + ndvi, 
                     data = mcf, 
                     sampsize = c('None' = 158, 'Low' = 158, 'Moderate' = 158, 'High' = 158), 
                     ntree=1500, 
@@ -671,86 +682,7 @@ ggarrange(other, high)
 
 ```
 
-### RF manual: type conversion
-Just using for loop to generate several graphs so its easier to compare them and make sure importance is stable
 
-0 = not type converted
-1 = type converted
-```{r}
-
-for (i in 1:10) {
-  
-rfm <- randomForest(tc_mortality ~ rain + tmax + TPI_five + dem_10m_zaca + flow_accumulation + sr + slope + TWI + cwd + vpd_aug + vpd_jan + aspect_transformed, 
-                    data = mcf, 
-                    sampsize = c('1' = 99, '0' = 99), 
-                    ntree=1500, 
-                    importance=T,
-                    replace = T)
-# OOB and importance
-rfm
-importance(rfm)
-#plot to visualize variable importance
-varImpPlot(rfm)
-
-}
-
-```
-variable importance is KINDA/MOSTLY stable. There arent big changes between runs, some variables flip 1 space, but some move 3 spaces. Variable importance was more stable when ndvi was included in the model.
-
-ROC and AUC
-```{r}
-# code: https://stats.stackexchange.com/questions/188616/how-can-we-calculate-roc-auc-for-classification-algorithm-such-as-random-forest
-rfm_roc <-  roc(mcf$tc_mortality, rfm$votes[,1])
-plot(rfm_roc) # plot comes out a little weird
-auc(rfm_roc)
-```
-
-PDP
-```{r}
-#PDP
-a <- partialPlot(rfm, as.data.frame(mcf), vpd_jan, "0") #0=not type converted
-b <- partialPlot(rfm, as.data.frame(mcf), vpd_jan, "1", col="red") #1=type converted
-lines(a, col="green")
-
-a <- partialPlot(rfm, as.data.frame(mcf), slope, "0") #0=not type converted
-b <- partialPlot(rfm, as.data.frame(mcf), slope, "1", col="red") #1=type converted
-lines(a, col="green")
-
-a <- partialPlot(rfm, as.data.frame(mcf), sr, "0") #0=not type converted
-b <- partialPlot(rfm, as.data.frame(mcf), sr, "1", col="red") #1=type converted
-lines(a, col="green")
-
-```
-so looking at the 3 most important variables for type conversino plots, all of the probabilities are below zero. only the not type converted stands have probabilities above 0, with some values of the explanatory variable having very high probabilities. So what this tells me is the model CANNOT distinguish type converted stands from non type converted stands. 
-
-ALE
-```{r}
-#sub data
-mcf_ale <- mcf %>% 
-  select(tc_mortality, rain, tmax, TPI_five, dem_10m_zaca, flow_accumulation, sr, slope, TWI, cwd, vpd_aug, vpd_jan) # the predictor$new code had issues with using a df with NA values even thought the variabels in the RF do not have NA values. 
-
-train_x <- mcf_ale[-which(names(mcf_ale) == "tc_mortality")]
-
-# predictors 
-nottc_predictor <- Predictor$new(rfm, data = mcf_ale, y = mcf_ale$tc_mortality, type = "prob", class="0")
-tc_predictor <- Predictor$new(rfm, data = mcf_ale, y = mcf_ale$tc_mortality, type = "prob", class="1")
-
-#vpd_jan
-other <- plot(FeatureEffect$new(nottc_predictor, feature = "vpd_jan")) + ggtitle("Not Type Converted")
-high <- plot(FeatureEffect$new(tc_predictor, feature = "vpd_jan")) + ggtitle("Type Converted")
-ggarrange(other, high)
-
-#slope
-other <- plot(FeatureEffect$new(nottc_predictor, feature = "slope")) + ggtitle("Not Type Converted")
-high <- plot(FeatureEffect$new(tc_predictor, feature = "slope")) + ggtitle("Type Converted")
-ggarrange(other, high)
-
-#sr
-other <- plot(FeatureEffect$new(nottc_predictor, feature = "sr")) + ggtitle("Not Type Converted")
-high <- plot(FeatureEffect$new(tc_predictor, feature = "sr")) + ggtitle("Type Converted")
-ggarrange(other, high)
-
-```
 
 # rdnbr: classification (2 classes)
 ```{r}
@@ -1139,6 +1071,161 @@ ggarrange(other, high)
 #sr
 other <- plot(FeatureEffect$new(other_predictor, feature = "sr")) + ggtitle("Other")
 high <- plot(FeatureEffect$new(high_predictor, feature = "sr")) + ggtitle("High")
+ggarrange(other, high)
+
+```
+
+# Type conversion: manual mortality (classification)
+
+0 = not type converted
+1 = type converted
+```{r}
+
+for (i in 1:10) {
+  
+rfm <- randomForest(tc_mortality ~ rain + tmax + TPI_five + dem_10m_zaca + flow_accumulation + sr + slope + TWI + cwd + vpd_aug + vpd_jan + aspect_transformed + ndvi, 
+                    data = mcf, 
+                    #sampsize = c('1' = 99, '0' = 99), 
+                    ntree=1500, 
+                    importance=T,
+                    replace = T)
+# OOB and importance
+rfm
+importance(rfm)
+#plot to visualize variable importance
+varImpPlot(rfm)
+
+}
+
+```
+
+
+ROC and AUC
+```{r}
+# code: https://stats.stackexchange.com/questions/188616/how-can-we-calculate-roc-auc-for-classification-algorithm-such-as-random-forest
+rfm_roc <-  roc(mcf$tc_mortality, rfm$votes[,1])
+plot(rfm_roc) # plot comes out a little weird
+auc(rfm_roc)
+```
+
+PDP
+```{r}
+#PDP
+a <- partialPlot(rfm, as.data.frame(mcf), vpd_jan, "0") #0=not type converted
+b <- partialPlot(rfm, as.data.frame(mcf), vpd_jan, "1", col="red") #1=type converted
+lines(a, col="green")
+
+a <- partialPlot(rfm, as.data.frame(mcf), slope, "0") #0=not type converted
+b <- partialPlot(rfm, as.data.frame(mcf), slope, "1", col="red") #1=type converted
+lines(a, col="green")
+
+a <- partialPlot(rfm, as.data.frame(mcf), sr, "0") #0=not type converted
+b <- partialPlot(rfm, as.data.frame(mcf), sr, "1", col="red") #1=type converted
+lines(a, col="green")
+
+```
+so looking at the 3 most important variables for type conversino plots, all of the probabilities are below zero. only the not type converted stands have probabilities above 0, with some values of the explanatory variable having very high probabilities. So what this tells me is the model CANNOT distinguish type converted stands from non type converted stands. 
+
+ALE
+```{r}
+#sub data
+mcf_ale <- mcf %>% 
+  select(tc_mortality, rain, tmax, TPI_five, dem_10m_zaca, flow_accumulation, sr, slope, TWI, cwd, vpd_aug, vpd_jan) # the predictor$new code had issues with using a df with NA values even thought the variabels in the RF do not have NA values. 
+
+train_x <- mcf_ale[-which(names(mcf_ale) == "tc_mortality")]
+
+# predictors 
+nottc_predictor <- Predictor$new(rfm, data = mcf_ale, y = mcf_ale$tc_mortality, type = "prob", class="0")
+tc_predictor <- Predictor$new(rfm, data = mcf_ale, y = mcf_ale$tc_mortality, type = "prob", class="1")
+
+#vpd_jan
+other <- plot(FeatureEffect$new(nottc_predictor, feature = "vpd_jan")) + ggtitle("Not Type Converted")
+high <- plot(FeatureEffect$new(tc_predictor, feature = "vpd_jan")) + ggtitle("Type Converted")
+ggarrange(other, high)
+
+#slope
+other <- plot(FeatureEffect$new(nottc_predictor, feature = "slope")) + ggtitle("Not Type Converted")
+high <- plot(FeatureEffect$new(tc_predictor, feature = "slope")) + ggtitle("Type Converted")
+ggarrange(other, high)
+
+#sr
+other <- plot(FeatureEffect$new(nottc_predictor, feature = "sr")) + ggtitle("Not Type Converted")
+high <- plot(FeatureEffect$new(tc_predictor, feature = "sr")) + ggtitle("Type Converted")
+ggarrange(other, high)
+
+```
+
+
+# Type conversion: rdnbr threshold (classification)
+
+preliminary threshold: 1160
+```{r}
+
+for (i in 1:10) {
+  
+rfm <- randomForest(rdnbr_tc_threshold ~ rain + tmax + TPI_five + dem_10m_zaca + flow_accumulation + sr + slope + TWI + cwd + vpd_aug + vpd_jan + aspect_transformed + ndvi, 
+                    data = tc_threshold, 
+                    #sampsize = c('1' = 99, '0' = 99), 
+                    ntree=1500, 
+                    importance=T,
+                    replace = T)
+# OOB and importance
+rfm
+importance(rfm)
+#plot to visualize variable importance
+varImpPlot(rfm)
+
+}
+```
+ROC and AUC
+```{r}
+# code: https://stats.stackexchange.com/questions/188616/how-can-we-calculate-roc-auc-for-classification-algorithm-such-as-random-forest
+rfm_roc <-  roc(tc_threshold$rdnbr_tc_threshold, rfm$votes[,1])
+plot(rfm_roc) # plot comes out a little weird
+auc(rfm_roc)
+```
+
+PDP
+```{r}
+#PDP
+a <- partialPlot(rfm, as.data.frame(tc_threshold), rain, "not_tc") 
+b <- partialPlot(rfm, as.data.frame(tc_threshold), rain, "tc", col="red") 
+lines(a, col="green")
+
+a <- partialPlot(rfm, as.data.frame(tc_threshold), slope, "not_tc") 
+b <- partialPlot(rfm, as.data.frame(tc_threshold), slope, "tc", col="red") 
+lines(a, col="green")
+
+a <- partialPlot(rfm, as.data.frame(tc_threshold), vpd_aug, "not_tc") 
+b <- partialPlot(rfm, as.data.frame(tc_threshold), vpd_aug, "tc", col="red") 
+lines(a, col="green")
+
+```
+ALE
+```{r}
+#sub data
+tc_threshold_ale <- tc_threshold %>% 
+  select(rdnbr_tc_threshold, rain, tmax, TPI_five, dem_10m_zaca, flow_accumulation, sr, slope, TWI, cwd, vpd_aug, vpd_jan, aspect_transformed, ndvi) # the predictor$new code had issues with using a df with NA values even thought the variabels in the RF do not have NA values. 
+
+train_x <- tc_threshold_ale[-which(names(tc_threshold_ale) == "rdnbr_tc_threshold")]
+
+# predictors 
+nottc_predictor <- Predictor$new(rfm, data = tc_threshold_ale, y = tc_threshold_ale$rdnbr_tc_threshold, type = "prob", class="not_tc")
+tc_predictor <- Predictor$new(rfm, data = tc_threshold_ale, y = tc_threshold_ale$rdnbr_tc_threshold, type = "prob", class="tc")
+
+#vpd_jan
+other <- plot(FeatureEffect$new(nottc_predictor, feature = "vpd_jan")) + ggtitle("Not Type Converted")
+high <- plot(FeatureEffect$new(tc_predictor, feature = "vpd_jan")) + ggtitle("Type Converted")
+ggarrange(other, high)
+
+#slope
+other <- plot(FeatureEffect$new(nottc_predictor, feature = "slope")) + ggtitle("Not Type Converted")
+high <- plot(FeatureEffect$new(tc_predictor, feature = "slope")) + ggtitle("Type Converted")
+ggarrange(other, high)
+
+#sr
+other <- plot(FeatureEffect$new(nottc_predictor, feature = "rain")) + ggtitle("Not Type Converted")
+high <- plot(FeatureEffect$new(tc_predictor, feature = "rain")) + ggtitle("Type Converted")
 ggarrange(other, high)
 
 ```
