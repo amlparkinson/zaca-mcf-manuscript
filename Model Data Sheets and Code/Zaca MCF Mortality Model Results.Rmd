@@ -513,7 +513,9 @@ b <- partialPlot(rfm, as.data.frame(mcf), vpd_jan, "High", col="red", ylim=c(-0.
 
 c <- partialPlot(rfm, as.data.frame(mcf), slope, "Low") 
 d <- partialPlot(rfm, as.data.frame(mcf), slope, "Moderate") 
-b <- partialPlot(rfm, as.data.frame(mcf), slope, "High", col="red", ylim=c(-0.8,0.8)) 
+b <- partialPlot(rfm, as.data.frame(mcf), slope, "High", col="red", ylim=c(-0.8,0.8))
+lines(c, col="green")
+
 
 c <- partialPlot(rfm, as.data.frame(mcf), sr, "Low") 
 d <- partialPlot(rfm, as.data.frame(mcf), sr, "Moderate")  
@@ -588,6 +590,7 @@ lines(c, col="green")
 
 c <- partialPlot(rfm, as.data.frame(mcf), slope, "Other") 
 b <- partialPlot(rfm, as.data.frame(mcf), slope, "High", col="red", ylim=c(-0.8,0.8)) 
+lines(c, col="green")
 
 c <- partialPlot(rfm, as.data.frame(mcf), sr, "Other") 
 b <- partialPlot(rfm, as.data.frame(mcf), sr, "High", col="red") 
