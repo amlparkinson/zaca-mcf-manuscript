@@ -25,12 +25,12 @@ library(pROC)
 mcf <- read.csv('Zaca MCF variables for model.csv') %>% 
   mutate(mortality_qual= fct_relevel(mortality_qual, levels=c("High", "Moderate", "Low", "None"))) %>% 
   mutate(dnbr_qualitative = case_when(
-    dnbr_2007 < 0.1 ~ "unburned",
-    dnbr_2007 < 0.27 ~ "low",
-    dnbr_2007 < 0.66 ~ "moderate",
-    dnbr_2007 > 0.66 ~ "high")) %>%
+    dnbr_2007 < 0.1 ~ "None",
+    dnbr_2007 < 0.27 ~ "Low",
+    dnbr_2007 < 0.66 ~ "Moderate",
+    dnbr_2007 > 0.66 ~ "High")) %>%
   mutate(dnbr_qualitative = as.factor(dnbr_qualitative),
-         dnbr_qualitative = fct_relevel(dnbr_qualitative, levels=c("high", "moderate", "low", "unburned"))) %>%
+         dnbr_qualitative = fct_relevel(dnbr_qualitative, levels=c("High", "Moderate", "Low", "None"))) %>%
   mutate(aspect_transformed = (1-cos((2*pi*aspect)/360))/2) %>% 
   mutate(three_class_mortality = case_when(
     mortality_qual %in% "High" ~ "High",
@@ -75,8 +75,10 @@ pico <- read_csv("coulter_env_modified.csv") %>%
     rdnbr_2007 > 640 ~ "High")) %>%
   mutate(rdnbr_qualitative = as.factor(rdnbr_qualitative),
          rdnbr_qualitative = fct_relevel(rdnbr_qualitative, 
-                                         levels=c("High", "Moderate", "Low", "None"))) %>% 
+                                         levels=c("High", "Moderate", "Low", "None"))) %>%
+  dplyr::select(-Mortality, -type_converted, -ndvi_2006) %>% 
   na.omit(pico) %>%  # 56 stands have NA values (probs all very small stands)
+  #filter(Mortality != "bigcone") %>% # 60 stands actually have big cones not pico
   mutate(rdnbr_qualitative2 = case_when(
     rdnbr_qualitative %in% "High" ~ "High",
     rdnbr_qualitative %in% c("Moderate", "Low", "None") ~ "Other")) %>% 
@@ -86,12 +88,13 @@ pico <- read_csv("coulter_env_modified.csv") %>%
   mutate(aspect_transformed = (1-cos((2*pi*aspect_30m)/360))/2) %>% 
   rename_all(funs(str_replace(., "_30m", ""))) %>% 
   mutate(dnbr_qualitative = case_when(
-    dnbr_2007 < 0.1 ~ "unburned",
-    dnbr_2007 < 0.27 ~ "low",
-    dnbr_2007 < 0.66 ~ "moderate",
-    dnbr_2007 > 0.66 ~ "high")) %>%
+    dnbr_2007 < 0.1 ~ "None",
+    dnbr_2007 < 0.27 ~ "Low",
+    dnbr_2007 < 0.66 ~ "Moderate",
+    dnbr_2007 > 0.66 ~ "High")) %>%
   mutate(dnbr_qualitative = as.factor(dnbr_qualitative),
-         dnbr_qualitative = fct_relevel(dnbr_qualitative, levels=c("high", "moderate", "low", "unburned")))
+         dnbr_qualitative = fct_relevel(dnbr_qualitative, levels=c("High", "Moderate", "Low", "None")))  
+  
   
 
   #document name is "modified" bc i manually removed all the unnesessary arc columns
@@ -101,6 +104,7 @@ for dnbr classes see: https://www.int-arch-photogramm-remote-sens-spatial-inf-sc
 
 for aspect transformation: https://esajournals.onlinelibrary.wiley.com/doi/full/10.1890/07-0539.1 appendix B; transformed Aspect = [1 - cos(2piAspect/360)]/2. This formula is similar (but not identical) to that used by Roberts and Cooper (1989). The transformed aspect values lie in the interval from 0 to1. Values near 0 represent aspects close to due north, while values near 1 represent aspects close to due south. East and west are treated identically with transformed aspect values of 0.5.
 
+Need to remove the bigcone stands from the pico dataset but having a little trouble atm. 
 
 ### Methods background
 
@@ -147,58 +151,57 @@ tc_mortality 1 = type converted (n=>600)
 mortality_count <- mcf %>% 
   group_by(mortality_qual) %>% 
   count() %>% 
-  rename(manual_mortality=mortality_qual)
-
-tc_count <- mcf %>% 
-  group_by(tc_mortality) %>% 
-  count() # 99 stands with type conversion, 636 with no type conversion
+  #rename(manual_mortality=mortality_qual) %>% 
+  mutate(mortality_type = 'manual')
 
 rdnbr_mcf <- mcf %>% 
   group_by(rdnbr_qualitative) %>% 
   count() %>% 
-  rename(mcf_rdnbr = rdnbr_qualitative)
+  rename(mortality_qual = rdnbr_qualitative) %>% 
+  mutate(mortality_type = 'rdnbr')
 
 dnbr_mcf <- mcf %>% 
   group_by(dnbr_qualitative) %>% 
   count() %>% 
-  rename(mcf_dnbr = dnbr_qualitative)
+  rename(mortality_qual = dnbr_qualitative) %>% 
+  mutate(mortality_type = 'dnbr')
+
+mcf_sample_size <- rbind(mortality_count, rdnbr_mcf, dnbr_mcf)
+
+ggplot(mcf_sample_size, aes(x = mortality_qual, y = n, fill = mortality_type)) + 
+  geom_col(position = "dodge") +
+  geom_text(aes(label=n), position = position_dodge(width=0.9), vjust=-0.5) +
+  scale_fill_discrete(name = "How was mortality determined")
+
+# mcf type conversison ------------------------------------------------------------------- 
+tc_count <- mcf %>% 
+  group_by(tc_mortality) %>% 
+  count() # 99 stands with type conversion, 636 with no type conversion
 
 #coulter ------------------------------------------------------------------- 
 rdnbr_pico <- pico %>% 
   group_by(rdnbr_qualitative) %>% 
   count() %>% 
-  rename(pico_rdnbr =rdnbr_qualitative)
+  rename(mortality_qual =rdnbr_qualitative) %>% 
+  mutate(mortality_type = 'rdnbr')
 
 dnbr_pico <- pico %>% 
   group_by(dnbr_qualitative) %>% 
   count() %>% 
-  rename(pico_dnbr = dnbr_qualitative)
+  rename(mortality_qual = dnbr_qualitative)%>% 
+  mutate(mortality_type = 'dnbr')
 
-# all -------------------------------------------------------------------
-all_sample_size <- cbind(mortality_count, rdnbr_mcf, dnbr_mcf, rdnbr_pico, dnbr_pico)
-```
-Yah, dnbr is not a good index to use. Rdnbr is better.
+pico_sample_size <- rbind(rdnbr_pico, dnbr_pico)
 
-### mortality v rdnbr 
-```{r}
-rdnbr_qual_n <- mcf %>% 
-  group_by(rdnbr_qualitative) %>% 
-  count() %>% 
-  mutate(mort_type = "rdnbr") %>% 
-  rename(mortality_qual = rdnbr_qualitative)
-
-mortality_n <- mcf %>% 
-  group_by(mortality_qual) %>% 
-  count() %>% 
-  mutate(mort_type = "manual")
-
-mortality_count <- rbind(rdnbr_qual_n, mortality_n)
-
-ggplot(mortality_count, aes(x = mortality_qual, y = n, fill = mort_type)) + geom_col(position = "dodge") +
+ggplot(pico_sample_size, aes(x = mortality_qual, y = n, fill = mortality_type)) + 
+  geom_col(position = "dodge") +
   geom_text(aes(label=n), position = position_dodge(width=0.9), vjust=-0.5) +
   scale_fill_discrete(name = "How was mortality determined")
 
 ```
+MCF: Yah, dnbr is not a good index to use. Rdnbr is better at least when it comes to high severity and high mortality. Both dnbr and rdnbr over estimate moderate adn low mortlity and severely underestiamte stands with no mortality. Bc of this, we could make the assumption that pico stands with high rdnbr also have high mortality. 
+
+
 
 ## type conversion threshold for rdnbr
 ```{r}
@@ -407,7 +410,7 @@ mcf_sub_pca_plot
 ```{r}
 for (i in 1:10) {
   
-rfm <- randomForest(mortality_qual ~ rain + tmax + TPI_five + dem_10m_zaca + flow_accumulation + sr + slope + TWI + cwd + vpd_aug + vpd_jan + aspect_transformed + ndvi, 
+rfm <- randomForest(mortality_qual ~ rain + tmax + TPI_five + dem_10m_zaca + flow_accumulation + sr + slope + TWI + cwd + vpd_aug + vpd_jan + aspect_transformed + ndvi + ndmi_2006 + rdnbr_qualitative, 
                     data = mcf, 
                     sampsize = c('None' = 158, 'Low' = 158, 'Moderate' = 158, 'High' = 158), 
                     ntree=1500, 
@@ -418,6 +421,8 @@ rfm
 importance(rfm)
 #plot to visualize variable importance
 varImpPlot(rfm)
+
+plot_fi(rf_feat_importance(rfm, mcf))
 
 }
 ```
@@ -450,7 +455,7 @@ ALE
 ```{r}
 #sub data
 mcf_ale <- mcf %>% 
-  select(mortality_qual, rain, tmax, TPI_five, dem_10m_zaca, flow_accumulation, sr, slope, TWI, cwd, vpd_aug, vpd_jan) # the predictor$new code had issues with using a df with NA values even thought the variabels in the RF do not have NA values. 
+  select(mortality_qual, rain, tmax, TPI_five, dem_10m_zaca, flow_accumulation, sr, slope, TWI, cwd, vpd_aug, vpd_jan, ndmi_2006, aspect_transformed, ndvi, rdnbr_qualitative) # the predictor$new code had issues with using a df with NA values even thought the variabels in the RF do not have NA values. 
 
 train_x <- mcf_ale[-which(names(mcf_ale) == "mortality_qual")]
 
@@ -480,6 +485,7 @@ low <- plot(FeatureEffect$new(low_predictor, feature = "sr")) + ggtitle("Low")
 moderate <- plot(FeatureEffect$new(moderate_predictor, feature = "sr")) + ggtitle("Moderate")
 high <- plot(FeatureEffect$new(high_predictor, feature = "sr")) + ggtitle("High")
 ggarrange(none, low, moderate, high)
+
 
 ```
 
@@ -612,7 +618,7 @@ mcf_2_class_mod$two_class_mortality_mod <- factor(mcf_2_class_mod$two_class_mort
 
 for (i in 1:10) {
   
-rfm <- randomForest(two_class_mortality_mod ~ rain + tmax + TPI_five + dem_10m_zaca + flow_accumulation + sr + slope + TWI + cwd + vpd_aug + vpd_jan + aspect_transformed, 
+rfm <- randomForest(two_class_mortality_mod ~ rain + tmax + TPI_five + flow_accumulation + sr + slope + TWI  + aspect_transformed + ndvi + ndmi_2006, 
                     data = mcf_2_class_mod, 
                     sampsize = c('Other' = 158,'High' = 158),
                     ntree=1500, 
@@ -626,6 +632,7 @@ varImpPlot(rfm)
 
 }
 ```
+removed vpd_aug and cwd (rain had greater importance than precip and vpd_jan had greater importance than vpd_aug). .Variable importance got worse, so removed vpd_jan bc tmax became more important more often. NOW the variable iportance is a lot more stable! and lo and behold tmax is more important than slope. removed elevation and replaced it with vpd_jan and variabe importance got cray cray again. Current variables result in very stable importance values!
 
 ROC/AUC
 ```{r}
@@ -660,7 +667,7 @@ ALE
 ```{r}
 #sub data
 mcf_ale <- mcf_2_class_mod %>% 
-  select(two_class_mortality_mod, rain, tmax, TPI_five, dem_10m_zaca, flow_accumulation, sr, slope, TWI, cwd, vpd_aug, vpd_jan) # the predictor$new code had issues with using a df with NA values even thought the variabels in the RF do not have NA values. 
+  select(two_class_mortality_mod, rain, tmax, TPI_five, dem_10m_zaca, flow_accumulation, sr, slope, TWI, cwd, vpd_aug, vpd_jan, aspect_transformed, ndvi, ndmi_2006) # the predictor$new code had issues with using a df with NA values even thought the variabels in the RF do not have NA values. 
 
 train_x <- mcf_ale[-which(names(mcf_ale) == "two_class_mortality_mod")]
 
@@ -669,8 +676,8 @@ other_predictor <- Predictor$new(rfm, data = mcf_ale, y = mcf_ale$two_class_mort
 high_predictor <- Predictor$new(rfm, data = mcf_ale, y = mcf_ale$two_class_mortality_mod, type = "prob", class="High")
 
 #vpd_jan
-other <- plot(FeatureEffect$new(other_predictor, feature = "vpd_jan")) + ggtitle("Other")
-high <- plot(FeatureEffect$new(high_predictor, feature = "vpd_jan")) + ggtitle("High")
+other <- plot(FeatureEffect$new(other_predictor, feature = "ndvi")) + ggtitle("Other")
+high <- plot(FeatureEffect$new(high_predictor, feature = "ndvi")) + ggtitle("High")
 ggarrange(other, high)
 
 #slope
@@ -691,7 +698,7 @@ ggarrange(other, high)
 ```{r}
 for (i in 1:10) {
   
-rfm <- randomForest(rdnbr_qualitative2 ~ rain + tmax + TPI_five + dem_10m_zaca + flow_accumulation + sr + slope + TWI + cwd + vpd_aug + vpd_jan + aspect_transformed, 
+rfm <- randomForest(rdnbr_qualitative2 ~ rain + tmax + TPI_five + dem_10m_zaca + flow_accumulation + sr + slope + TWI + cwd + vpd_aug + vpd_jan + aspect_transformed + ndvi + ndmi_2006, 
                     data = mcf, 
                     sampsize = c('High' = 150, 'Other' = 150), 
                     ntree=1500, 
@@ -734,7 +741,7 @@ ALE
 ```{r}
 #sub data
 mcf_ale <- mcf %>% 
-  select(rdnbr_qualitative2, rain, tmax, TPI_five, dem_10m_zaca, flow_accumulation, sr, slope, TWI, cwd, vpd_aug, vpd_jan, aspect_transformed) # the predictor$new code had issues with using a df with NA values even thought the variabels in the RF do not have NA values. 
+  select(rdnbr_qualitative2, rain, tmax, TPI_five, dem_10m_zaca, flow_accumulation, sr, slope, TWI, cwd, vpd_aug, vpd_jan, aspect_transformed, ndvi, ndmi_2006) # the predictor$new code had issues with using a df with NA values even thought the variabels in the RF do not have NA values. 
 
 train_x <- mcf_ale[-which(names(mcf_ale) == "rdnbr_qualitative2")]
 
@@ -743,8 +750,8 @@ other_predictor <- Predictor$new(rfm, data = mcf_ale, y = mcf_ale$rdnbr_qualitat
 high_predictor <- Predictor$new(rfm, data = mcf_ale, y = mcf_ale$rdnbr_qualitative2, type = "prob", class="High")
 
 #vpd_jan
-other <- plot(FeatureEffect$new(other_predictor, feature = "vpd_jan")) + ggtitle("Other")
-high <- plot(FeatureEffect$new(high_predictor, feature = "vpd_jan")) + ggtitle("High")
+other <- plot(FeatureEffect$new(other_predictor, feature = "ndvi")) + ggtitle("Other")
+high <- plot(FeatureEffect$new(high_predictor, feature = "ndvi")) + ggtitle("High")
 ggarrange(other, high)
 
 #slope
@@ -758,7 +765,7 @@ high <- plot(FeatureEffect$new(high_predictor, feature = "sr")) + ggtitle("Type 
 ggarrange(other, high)
 
 ```
-
+interesting. for rdnbr classification, the ale plots show different trends for ndvi. .However, this might change as the explanatory variables change
 
 # rdnbr: regression
 ```{r}
@@ -1301,6 +1308,21 @@ ggplot(sr_df, aes(x = sr, y = .ale)) + geom_line() # not sure what .ale is. the 
 
 # another way to write the code: https://github.com/christophM/interpretable-ml-book/blob/6153b2ac0143f879bd4a856a1048545a40cd1a74/manuscript/05.4-agnostic-ale.Rmd
 FeatureEffects$new(sr_predictor_low, feature = "sr", method = "ale")$plot() +ggtitle("Low") #produces the same graph as above
+
+
+# categorical variable 
+none <-  plot(FeatureEffect$new(none_predictor, feature = "rdnbr_qualitative")) + ggtitle("None")
+low <- plot(FeatureEffect$new(low_predictor, feature = "rdnbr_qualitative")) + ggtitle("Low")
+moderate <- plot(FeatureEffect$new(moderate_predictor, feature = "rdnbr_qualitative")) + ggtitle("Moderate")
+high <- plot(FeatureEffect$new(high_predictor, feature = "rdnbr_qualitative")) + ggtitle("High")
+ggarrange(none, low, moderate, high)
+
+# plot 2 variables
+none <-  plot(FeatureEffect$new(none_predictor, feature = c("tmax", "rain"))) + ggtitle("None")
+low <- plot(FeatureEffect$new(low_predictor, feature = c("tmax", "rain"))) + ggtitle("Low")
+moderate <- plot(FeatureEffect$new(moderate_predictor, feature = c("tmax", "rain"))) + ggtitle("Moderate")
+high <- plot(FeatureEffect$new(high_predictor, feature = c("tmax", "rain"))) + ggtitle("High")
+ggarrange(none, low, moderate, high)
 
 
 
