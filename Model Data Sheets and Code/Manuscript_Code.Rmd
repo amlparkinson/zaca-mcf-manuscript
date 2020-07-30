@@ -1,0 +1,94 @@
+---
+title: "Zaca Fire Type Conversion"
+date: "7/28/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Prepare Workspace
+
+```{r load_libraries}
+
+library(tidyverse)
+library(raster)
+library(VSURF)
+library(ALEplot)
+
+setwd("workingdirectory") #change this to your local directory
+
+set.seed(2020) #Set seed so random forests are replicable
+
+```
+
+### Load Shapefiles
+
+```{r load_shapefiles}
+
+zaca <- shapefile("E:/zaca/chris/zaca_scar")
+
+mixed_conifer <- shapefile("all_mixed_pine.shp")
+
+coulter <- shapefile("coulter_pines.shp") %>% 
+  spTransform(., crs(mixed_conifer))
+
+```
+
+### Prepare Environmental Variables
+
+```{r}
+
+dem <- raster("E:/zaca/environmental_data/all_variables/dem_10m_zaca.tif")
+
+vpd_jan <- raster("E:/zaca/environmental_data/cwd_vpd_amp/PRISM_vpdmax_30yr_normal_800mM2_01_asc/PRISM_vpdmax_30yr_normal_800mM2_01_asc.asc") %>% 
+  projectRaster(., dem_30m) %>% 
+  crop(., zaca) %>% 
+  mask(., zaca)
+
+#TPI
+#Insolation
+#Temp
+#Rainfall
+
+```
+
+## Mixed Conifer Forest
+
+### Extract Values
+
+```{r}
+
+mixed_conifer_env <- extract()
+
+```
+
+### Stepwise Variable Selection
+
+```{r}
+
+#Extract prediction and response variables
+mcf.predictors <- mixed_conifer_env[,2:ncol(mixed_conifer_env)]
+mcf.response <- mixed_conifer_env[,1]
+
+#Run stepwise variable selection algorithm
+mcf.vsurf <- VSURF(x = predictors, y = response)
+
+#Get names of selected variables
+names(mcf.predictors[mcf.vsurf$varselect.pred])
+
+```
+
+### Random Forest
+
+```{r}
+
+#Create random forest using selected variables
+mixed_conifer_rf <- randomForest(RdNBR_2007 ~ var1 + var2 + var3, 
+                                 data = mixed_conifer_env, 
+                                 importance = TRUE, 
+                                 na.action = na.omit)
+
+```
+
