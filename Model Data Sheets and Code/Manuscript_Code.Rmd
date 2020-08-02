@@ -8,37 +8,141 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-### Prepare Workspace
+## Prepare Workspace
 
 ```{r load_libraries}
 
 library(tidyverse)
 library(raster)
+library(randomForest)
 library(VSURF)
 library(ALEplot)
 
-setwd("workingdirectory") #change this to your local directory
+setwd("E:/zaca/type_conversion")
 
 set.seed(2020) #Set seed so random forests are replicable
 
-```
-
-### Load Shapefiles
-
-```{r load_shapefiles}
-
-zaca <- shapefile("E:/zaca/chris/zaca_scar")
-
-mixed_conifer <- shapefile("all_mixed_pine.shp")
-
-coulter <- shapefile("coulter_pines.shp") %>% 
-  spTransform(., crs(mixed_conifer))
+UTM_11N <- CRS("+proj=utm +zone=11 +ellps=WGS84 +datum=WGS84 +units=m +no_defs ")
 
 ```
 
-### Prepare Environmental Variables
+## Prepare Vector Data
+
+### Fire History
+
+#### Load Fire History Data
 
 ```{r}
+
+#Load Fires
+firep19_1 <- shapefile("./fire19_1/firep19_1.shp")
+
+#Rename Columns
+names(firep19_1@data)[which(names(firep19_1@data) == "ALARM_DATE")] <- "START_DATE"
+names(firep19_1@data)[which(names(firep19_1@data) == "CONT_DATE")] <- "END_DATE"
+names(firep19_1@data)[which(names(firep19_1@data) == "YEAR_")] <- "YEAR"
+
+#Load Prescribed Burns
+rxburn19_1 <- shapefile("./fire19_1/rxburn19_1.shp")
+
+#Rename Columns
+names(rxburn19_1@data)[which(names(rxburn19_1@data) == "TREATMENT1")] <- "FIRE_NAME"
+names(rxburn19_1@data)[which(names(rxburn19_1@data) == "YEAR_")] <- "YEAR"
+
+#Combine Layers
+fire_history <- bind(firep19_1, rxburn19_1)
+
+#Change Column Data Types
+fire_history$YEAR <- as.numeric(fire_history$YEAR)
+
+#Select Columns
+fire_history <- fire_history[, c("FIRE_NAME", "YEAR")]
+
+```
+
+#### Calculate Years Since Fire
+
+```{r}
+
+#Extract Zaca burn scar
+zaca <- subset(fire_history, FIRE_NAME == "ZACA" & YEAR == 2007)
+
+#Extract fires before Zaca
+fires_before_zaca <- subset(fire_history, YEAR < 2007)
+
+#Calculate years since last burn
+fires_within_zaca_scar <- intersect(zaca, fires_before_zaca)
+fires_within_zaca_scar$years_since_fire <- fires_within_zaca_scar$YEAR.1 - fires_within_zaca_scar$YEAR.2
+
+#Reproject to UTM Zone 11N
+fires_within_zaca_scar <- spTransform(fires_within_zaca_scar, UTM_11N)
+
+```
+
+#### Reproject Zaca Boundary
+
+```{r}
+
+zaca <- spTransform(zaca, UTM_11N)
+
+```
+
+### Vegetation Cover
+
+```{r}
+
+south_coast_vegetation <- shapefile("RVMid_R05_SouCoast.shp") %>% 
+  crop(., zaca)
+
+central_coast_vegetation <- shapefile("RVMid_R05_CentralCoast.shp") %>% 
+  crop(., zaca)
+
+zaca_vegetation <- merge(south_coast_vegetation, central_coast_vegetation)
+
+```
+
+
+## Prepare Environmental Variables
+
+## Create Raster Templates
+
+The templates have the correct projection, extent, origin, and spatial resolution for the environmental variables. The environmental variables will be reprojected to line up with the templates. The pixel grid is derived from the Landsat images. The topographic variables and insolation will be analyzed at a 10 m spatial resolution. The other variables will be analyzed at a 30 m spatial resolution.
+
+```{r}
+
+template_30m <- raster(landsat_2006[[1]]) %>% 
+  crop(., y = zaca)
+
+template_10m <- raster(landsat_2006[[1]]) %>% 
+  crop(., y = zaca) %>% 
+  disaggregate(., fact = 3)
+
+```
+
+
+### Prepare Digital Elevation Model
+
+```{r dem}
+
+dem120 <- raster("C:/Users/Christopher/Downloads/USGS_13_n35w120.tif")
+dem121 <- raster("C:/Users/Christopher/Downloads/USGS_13_n35w121.tif")
+
+usgs_dem <- merge(dem120, dem121) %>% 
+  projectRaster(., to = template_10m, method = "bilinear")
+
+```
+
+
+### Prepare Topography Data
+
+```{r topography}
+
+```
+
+
+### Prepare Climate Data
+
+```{r climate}
 
 dem <- raster("E:/zaca/environmental_data/all_variables/dem_10m_zaca.tif")
 
