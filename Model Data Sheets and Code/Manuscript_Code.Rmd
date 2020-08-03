@@ -26,6 +26,26 @@ UTM_11N <- CRS("+proj=utm +zone=11 +ellps=WGS84 +datum=WGS84 +units=m +no_defs "
 
 ```
 
+## Prepare Imagery Data
+
+### Load Function to Pre-process Landsat
+
+The Landsat pre-processing function is stored in a separate file. For each image, it stacks the Landsat bands into a single image file. It then masks erroneous reflectance retrievals, masks clouds, and saves the new image. The function automatically iterates over every data set in a subdirectory.
+
+```{r}
+
+source("preprocessLandsat.R")
+
+```
+
+### Pre-process Landsat Images
+
+```{r}
+
+preprocessLandsat("E:/zaca/type_conversion/Imagery")
+
+```
+
 ## Prepare Vector Data
 
 ### Fire History
