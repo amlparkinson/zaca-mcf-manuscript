@@ -132,17 +132,19 @@ tc_mortality 1 = type converted (n=>600)
 ### Goals/Questions
 
 1. Can the mcf model distinguish between type conversion and the other mortality types? 
-  - so far, no! so variable importance is not meaningful for that model
-
-2. Which variables contribute to type conversion of MCFs?
+    yes, if we use ALE plots
+    
+2. Which variables contribute to type conversion of MCFs and pico?
 
 3. How well does rdnbr compare to manual estimates of mortality? 
+    high rdnbr matches up very well with high mortality. There is less of a match up between moderate, low,      and no mortality with the corresponding rdnbr severity levels. 
 
 4. How does using rdnbr and manually derived mortality compare as a response variable?
+    this would be a better question for the big cone model
 
-5. Which variables contribute to high/low mortality? high/low rdnbr?
+5. Which variables contribute to high/low/type conversion rdnbr? Is there a distinguishable difference between values of the explanatory variables for high/type conversion levels of rdnbr?
 
-5. Does conifer type contribute to different variable importances?
+6. Does conifer type contribute to different variable importances?
 
 
 ### Sample Size for each mortality class

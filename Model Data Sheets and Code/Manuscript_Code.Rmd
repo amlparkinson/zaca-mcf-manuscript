@@ -79,6 +79,8 @@ mcf.vsurf <- VSURF(x = predictors, y = response)
 names(mcf.predictors[mcf.vsurf$varselect.pred])
 
 ```
+Chris, can you inlcude links to the code you;re using? 
+
 
 ### Random Forest
 
