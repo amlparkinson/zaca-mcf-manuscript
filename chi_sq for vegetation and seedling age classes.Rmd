@@ -1,0 +1,44 @@
+---
+title: "Field Surveys"
+author: "Anne-Marie Parkinson"
+date: "August 7, 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+# create data frame
+df <- data.frame(age_class = c("0-3", "4-6", "7-10"),
+                 cepa = c(1, 6, 41),
+                 chaparral = c(12, 13, 27))
+
+# make contigency table: getting the data in a format that will be used in chi.sq()
+df_contigency <- df %>% 
+  column_to_rownames('age_class')
+
+# run chi-square test
+df_chi <- chisq.test(df_contigency)
+df_chi # pvalue = 0.000665
+
+# get Standardized residuals
+df_chi$stdres
+```
+The numbers reported in the above data frame come from the manuscript, which I calcualted from excel sheets.
+cepa = the number of recorded sapling/seedlings found in ceanothus palmeri in each corresponding age class 
+chaparral = the number of recorded sapling/seedlings found in mixed chaparral in each corresponding age class 
+
+Standardized residuals > |2| indicates strong divergence from null hypothesis scenario. So There are significantly more seedlings/saplings in the 7-10 age class that were found in ceanothus palmeri, But both vegetation types had a majority of seedling/saplings in the 7-10 age class. And there were significantly more seedlings/saplings in the 0-3 age class that were found in mixed chaparral. 
+
+($\chi$^2^(`r df_chi$parameter`) = `r round(df_chi$statistic,2)`, *p* = `r round(df_chi$p.value,2)`)
+
+
+chris, later we can combine this with the final manuscript code. 
+
+
