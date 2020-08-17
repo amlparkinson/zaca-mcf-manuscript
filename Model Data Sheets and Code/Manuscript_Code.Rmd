@@ -197,13 +197,12 @@ mcf.predictors <- mixed_conifer_env[,2:ncol(mixed_conifer_env)]
 mcf.response <- mixed_conifer_env[,1]
 
 #Run stepwise variable selection algorithm
-mcf.vsurf <- VSURF(x = predictors, y = response)
+mcf.vsurf <- VSURF(x = mcf.predictors, y = mcf.response)
 
 #Get names of selected variables
 names(mcf.predictors[mcf.vsurf$varselect.pred])
 
 ```
-Chris, can you inlcude links to the code you;re using? 
 
 
 ### Random Forest

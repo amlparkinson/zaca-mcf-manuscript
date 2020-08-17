@@ -59,7 +59,14 @@ mcf <- read.csv('Zaca MCF variables for model.csv') %>%
     rdnbr_qualitative %in% c("Moderate", "Low", "None") ~ "Other")) %>% 
   mutate(rdnbr_qualitative2 = as.factor(rdnbr_qualitative2)) %>% 
   mutate(rdnbr_qualitative2= fct_relevel(rdnbr_qualitative2, 
-                                     levels=c("Other", "High"))) 
+                                     levels=c("Other", "High")))  %>% 
+  mutate(rdnbr_tc = case_when(
+    rdnbr_2007 < 1000 ~ "Not_TC",
+    rdnbr_2007 >= 1000 ~ "TC"
+  )) %>% 
+  mutate(rdnbr_tc = as.factor(rdnbr_tc)) %>% 
+  mutate(rdnbr_tc= fct_relevel(rdnbr_tc, 
+                                     levels=c("Not_TC", "TC")))
   
 
 
@@ -175,10 +182,15 @@ ggplot(mcf_sample_size, aes(x = mortality_qual, y = n, fill = mortality_type)) +
   geom_text(aes(label=n), position = position_dodge(width=0.9), vjust=-0.5) +
   scale_fill_discrete(name = "How was mortality determined")
 
-# mcf type conversison ------------------------------------------------------------------- 
+# mcf manual type conversison ------------------------------------------------------------------- 
 tc_count <- mcf %>% 
   group_by(tc_mortality) %>% 
   count() # 99 stands with type conversion, 636 with no type conversion
+
+# mcf type conversion with rdnbr > 1000 threshold --------------------------------------------
+tc2_coun <- mcf %>% 
+  group_by(rdnbr_tc) %>% 
+  count() #not tc = 680, tc = 55
 
 #coulter ------------------------------------------------------------------- 
 rdnbr_pico <- pico %>% 
@@ -203,6 +215,112 @@ ggplot(pico_sample_size, aes(x = mortality_qual, y = n, fill = mortality_type)) 
 ```
 MCF: Yah, dnbr is not a good index to use. Rdnbr is better at least when it comes to high severity and high mortality. Both dnbr and rdnbr over estimate moderate adn low mortlity and severely underestiamte stands with no mortality. Bc of this, we could make the assumption that pico stands with high rdnbr also have high mortality. 
 
+### Stepwise Variable Selection
+
+```{r}
+
+mcf_sub <- mcf %>% 
+  dplyr::select(rdnbr_qualitative,flow_accumulation, sr, rain, slope, tmax, TPI_five, TWI, fri, aspect_transformed, cwd, ndvi, vpd_aug, vpd_jan,ndmi_2006, dem_10m_zaca)
+
+#Extract prediction and response variables
+mcf.predictors <- mcf_sub[,2:ncol(mcf_sub)]
+mcf.response <- mcf_sub[,1]
+
+#Run stepwise variable selection algorithm
+mcf.vsurf <- VSURF(x = mcf.predictors, y = mcf.response)
+
+
+#Get names of selected variables
+names(mcf.predictors[mcf.vsurf$varselect.pred])
+
+
+
+# does vsurf selected variables improve variance explained and result in stabilized variable importance ranking?
+
+for (i in 1:7) {
+  
+rfm <- randomForest(rdnbr_tc ~ rain + tmax + flow_accumulation + sr + slope + TWI + cwd + vpd_aug + ndvi + ndmi_2006 + aspect_transformed + vpd_jan, 
+                    data = mcf, 
+                    sampsize = c('Not_TC' = 55, 'TC' = 55), 
+                    ntree=1500, 
+                    importance=T,
+                    replace = T)
+# OOB and importance
+rfm
+importance(rfm)
+#plot to visualize variable importance
+varImpPlot(rfm)
+
+}
+rfm_roc <-  roc(mcf$rdnbr_tc, rfm$votes[,1])
+auc(rfm_roc)
+
+```
+all variables: rain + tmax + TPI_five + dem_10m_zaca + flow_accumulation + sr + slope + TWI + cwd + vpd_aug + ndvi + ndmi_2006 + vpd_jan + aspect_transformed
+
+vsurf variable selection (mcf, regression): slope + sr + vpd_aug + tmax + ndmi_2006 + vpd_jan + ndvi + rain + dem_10m_zaca
+
+vsurf variables: % variance explained = 50%, VI ranking is NOT stable, msr = 44,577
+all variables: % variance explained = 47%, VI ranking is NOT stable, msr = 47,592
+all variables (minus elevation): % variance explained = 47%, VI ranking is mostly stable
+all variables (minus vpd_jan and elevation): % variance explained = 44%, VI ranking IS very stable
+all variables (minus aspect, tpi, twi): % variance explained = 50%, VI ranking is not that stable, msr = 44,699
+all variables (minus aspect, tpi, twi, vpd_jan): % variance explained = 49%, VI ranking is kinda stable
+all variables (minus aspect, tpi, twi, elevation): % variance explained = 49%, VI ranking is kinda stable
+
+
+vsurf variable selection (mcf, classification, rdnr_tc): vpd_aug + slope + rain + vpd_jan + ndvi
+
+vsurf variables: oob = 14%, not tc class error = 13%, tc class error = 25%, VI ranking IS stable, auc = 89%
+all variables: oob = 15%, not tc class error = 14%, tc class error = 31%, VI ranking is NOT stable, auc = 86%
+all variables (minus elevation, tpi, and vpd_jan): oob = 15%, not tc class error = 14%, tc class error = 35%, VI ranking IS stable, auc = 84%
+all variables(minus elevation, tpi): oob = 15%, not tc class error = 13%, tc class error = 31%, VI ranking is not stable, auc = 86%
+
+vsurf variable selection (mcf, classification, rdnbr 4 mortality classes): sr + ndmi_2006 + vdp_aug + dem_10m_zaca + ndvi + vpd_jan + tmax + cwd + rain + flow_accumulation
+
+
+### Stepwise Variable Selection - PICO
+
+```{r}
+
+pico_sub <- pico %>% 
+  dplyr::select(flow_accumulation, insolation, rain, slope, tmax, TPI_five, TWI,  aspect_transformed, cwd,  vpd_aug, vpd_jan,ndmi_2006, dem, years_since_burn) # no ndvi
+
+#Extract prediction and response variables
+pico.predictors <- pico_sub[,c(2:14)]
+pico.response <- pico_sub[, 1]
+
+#Run stepwise variable selection algorithm
+pico.vsurf <- VSURF(pico$rdnbr_2007 ~ ., data = pico_sub) #setting up the code the same way as the mcf resulted in an error, but this format also works
+
+
+#Get names of selected variables
+names(pico_sub[pico.vsurf$varselect.pred])
+
+
+
+# does vsurf selected variables improve variance explained and result in stabilized variable importance ranking?
+
+for (i in 1:7) {
+  
+rfm <- randomForest(rdnbr_2007 ~ flow_accumulation + insolation + + rain + ndmi_2006 + tmax + dem + vpd_jan + vpd_aug + cwd + years_since_burn, 
+                    data = pico, 
+                    #sampsize = c('Not_TC' = 55, 'TC' = 55), 
+                    ntree=1500, 
+                    importance=T,
+                    replace = T)
+# OOB and importance
+rfm
+importance(rfm)
+#plot to visualize variable importance
+varImpPlot(rfm)
+
+}
+rfm_roc <-  roc(mcf$rdnbr_tc, rfm$votes[,1])
+auc(rfm_roc)
+
+```
+VSURF regreession variables selected: flow accumulation + insolation + + rain + ndmi_2006 + tmax + dem + vpd_jan + vpd_aug + cwd + years_since_burn 
 
 
 ## type conversion threshold for rdnbr
