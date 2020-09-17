@@ -46,6 +46,65 @@ preprocessLandsat("E:/zaca/type_conversion/Imagery")
 
 ```
 
+### Calculate NBR
+
+```{r}
+
+#Directory will all pre-processed Landsat images
+setwd("E:/zaca/type_conversion/Imagery/Level2")
+
+for(img in list.files(path = ".", "GTiff$")){
+  
+  print(paste("Processing ", substr(img, 18, 25), sep = ""))
+  
+  #Merge bands into a brick
+  image <- brick(img)
+  
+  NAvalue(image) <- -9999
+  
+  #Check sensor ID, mask using QA layer, and then compute NBR using appropriate formula
+  if(as.numeric(substr(img, 3, 4)) == 8){
+
+    print("Recognized Landsat 8")
+    
+    #Band designations change, depending on whether the OLI aerosol band is included
+    if(nlayers(image) == 7){nbr <- (image[[5]] - image[[7]])/(image[[5]] + image[[7]])}
+    else if(nlayers(image) == 6){nbr <- (image[[4]] - image[[6]])/(image[[4]] + image[[6]])}
+    else {print("Incorrect number of bands")}
+    
+  } else if(as.numeric(substr(img, 3, 4)) == 5 | as.numeric(substr(img, 3, 4)) == 7) {
+    
+    print("Recognized Landsat 5 or 7")
+    
+    #Band 7 is the sixth band in the brick for TM/ETM
+    if(nlayers(image) == 6){nbr <- (image[[4]] - image[[6]])/(image[[4]] + image[[6]])}
+    else {print("Incorrect number of bands")}
+    
+    } else {print("Error recognizing sensor")}
+  
+  writeRaster(nbr, filename = paste("NBR_", substr(img, 18, 25), ".tif", sep = ""), format = "GTiff", NAflag = -9999)
+  assign(paste("NBR_", substr(img, 18, 25)), nbr)
+  
+  rm(image, image_brick, nbr)
+  
+  print("Image completed")
+  
+}
+
+```
+
+### Calculate RdNBR
+
+```{r}
+
+NBR_brick <- brick(NBR_2000, NBR_2001, NBR_2002, NBR_2003, NBR_2004, NBR_2005, NBR_2006, NBR_2007) * 1000
+
+baseline_NBR <- calc(NBR_brick[[1:7]], fun = median)
+
+RdNBR_2007 <- (baseline_NBR - NBR_brick[[8]]) / sqrt(abs(baseline_NBR/1000))
+
+```
+
 ## Prepare Vector Data
 
 ### Fire History
@@ -150,6 +209,8 @@ dem121 <- raster("C:/Users/Christopher/Downloads/USGS_13_n35w121.tif")
 usgs_dem <- merge(dem120, dem121) %>% 
   projectRaster(., to = template_10m, method = "bilinear")
 
+#dem <- raster("E:/zaca/environmental_data/all_variables/dem_10m_zaca.tif")
+
 ```
 
 
@@ -157,24 +218,72 @@ usgs_dem <- merge(dem120, dem121) %>%
 
 ```{r topography}
 
-```
+slope <- terrain(x = usgs_dem, opt = "slope", unit = "degrees", neighbors = 8)
 
+aspect <- terrain(x = usgs_dem, opt = "aspect", unit = "degrees", neighbors = 8)
+
+tpi <- terrain(x = usgs_dem, opt = "TPI") #Can calculate larger moving windows manually
+
+```
 
 ### Prepare Climate Data
 
 ```{r climate}
 
-dem <- raster("E:/zaca/environmental_data/all_variables/dem_10m_zaca.tif")
-
-vpd_jan <- raster("E:/zaca/environmental_data/cwd_vpd_amp/PRISM_vpdmax_30yr_normal_800mM2_01_asc/PRISM_vpdmax_30yr_normal_800mM2_01_asc.asc") %>% 
-  projectRaster(., dem_30m) %>% 
+jan_max_vpd_30yr <- raster("E:/zaca/environmental_data/cwd_vpd_amp/PRISM_vpdmax_30yr_normal_800mM2_01_asc/PRISM_vpdmax_30yr_normal_800mM2_01_asc.asc") %>% 
+  projectRaster(., template_30m, method = "ngb") %>% 
   crop(., zaca) %>% 
   mask(., zaca)
 
-#TPI
-#Insolation
-#Temp
-#Rainfall
+jan_min_temp_30yr <- raster("E:/zaca/type_conversion/Environmental_Variables/Climate/January_Min_Temperature/PRISM_tmin_30yr_normal_800mM2_01_asc/PRISM_tmin_30yr_normal_800mM2_01_asc.asc") %>% 
+  projectRaster(., template_30m, method = "ngb") %>% 
+  crop(., zaca) %>% 
+  mask(., zaca)
+
+aug_max_temp_30yr <- raster("E:/zaca/type_conversion/Environmental_Variables/Climate/August_Max_Temperature/PRISM_tmax_30yr_normal_800mM2_08_asc/PRISM_tmax_30yr_normal_800mM2_08_asc.asc") %>% 
+  projectRaster(., template_30m, method = "ngb") %>% 
+  crop(., zaca) %>% 
+  mask(., zaca)
+
+aug_max_vpd_30yr <- raster("E:/zaca/type_conversion/Environmental_Variables/Climate/August_Max_VPD/PRISM_vpdmax_30yr_normal_800mM2_08_asc/PRISM_vpdmax_30yr_normal_800mM2_08_asc.asc") %>% 
+  projectRaster(., template_30m, method = "ngb") %>% 
+  crop(., zaca) %>% 
+  mask(., zaca)
+
+annual_precip_30yr <- raster("E:/zaca/type_conversion/Environmental_Variables/Climate/Annual_Precipitation/PRISM_ppt_30yr_normal_800mM2_annual_asc/PRISM_ppt_30yr_normal_800mM2_annual_asc.asc") %>% 
+  projectRaster(., template_30m, method = "ngb") %>% 
+  crop(., zaca) %>% 
+  mask(., zaca)
+
+#Add Insolation
+
+```
+
+### Prepare Weather Data
+
+```{r}
+
+jan_min_temp_2007 <- raster("E:/zaca/type_conversion/Environmental_Variables/Weather/January_Min_Temp/PRISM_tmin_stable_4kmM3_200701_bil/PRISM_tmin_stable_4kmM3_200701_bil.bil") %>% 
+  projectRaster(., template_30m, method = "ngb") %>% 
+  crop(., zaca) %>% 
+  mask(., zaca)
+
+aug_max_temp_2006 <- raster("E:/zaca/type_conversion/Environmental_Variables/Climate/August_Max_Temperature/PRISM_tmax_30yr_normal_800mM2_08_asc/PRISM_tmax_30yr_normal_800mM2_08_asc.asc") %>% 
+  projectRaster(., template_30m, method = "ngb") %>% 
+  crop(., zaca) %>% 
+  mask(., zaca)
+
+aug_max_vpd_2006 <- raster("E:/zaca/type_conversion/Environmental_Variables/Weather/August_Max_VPD/PRISM_vpdmax_stable_4kmM3_200608_bil/PRISM_vpdmax_stable_4kmM3_200608_bil.bil") %>% 
+  projectRaster(., template_30m, method = "ngb") %>% 
+  crop(., zaca) %>% 
+  mask(., zaca)
+
+annual_precip_30yr <- raster("E:/zaca/type_conversion/Environmental_Variables/Climate/Annual_Precipitation/PRISM_ppt_30yr_normal_800mM2_annual_asc/PRISM_ppt_30yr_normal_800mM2_annual_asc.asc") %>% 
+  projectRaster(., template_30m, method = "ngb") %>% 
+  crop(., zaca) %>% 
+  mask(., zaca)
+
+#Calculate precipitation for preceding year?
 
 ```
 
