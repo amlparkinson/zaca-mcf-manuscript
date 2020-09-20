@@ -313,6 +313,26 @@ names(mcf.predictors[mcf.vsurf$varselect.pred])
 
 ```
 
+# Tuning Parameters
+
+source: https://arxiv.org/pdf/1804.03515.pdf (see digital page 9 for tuneRanger)
+
+replace: dataframe and response variable 
+```{r}
+set.seed(1127)
+
+# run tuneRanger
+mcf_task <- makeClassifTask(data = dataframe, target = "y variable")
+tune_output <- tuneRanger(mcf_task, 
+                          measure = list(mmce), 
+                          num.trees = 1500, 
+                          tune.parameters = c("mtry", "min.node.size"))
+
+# get best parameter values
+tune_output$model
+
+```
+get error when I try to add "replace" as a tuning parameter :(
 
 ### Random Forest
 
