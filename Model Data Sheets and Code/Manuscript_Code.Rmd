@@ -317,7 +317,12 @@ names(mcf.predictors[mcf.vsurf$varselect.pred])
 
 source: https://arxiv.org/pdf/1804.03515.pdf (see digital page 9 for tuneRanger)
 
+options for the measure function: https://mlr.mlr-org.com/articles/tutorial/measures.html
+
+
 replace: dataframe and response variable 
+
+tunRanger can also be used for ntree, but studies have shown that after a certain number of trees, usually a couple hundred, there is no benefit on accuracy/model fit of increasing ntree, so i fgiure just using a large number will get the same result as whatever number tuneRangere spits out. 
 ```{r}
 set.seed(1127)
 
@@ -328,6 +333,7 @@ tune_output <- tuneRanger(mcf_task,
                           num.trees = 1500, 
                           tune.parameters = c("mtry", "min.node.size"))
 
+# recommended parameter settings
 # get best parameter values
 tune_output$model
 
