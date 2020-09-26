@@ -1,0 +1,21 @@
+Plot Code,GPS Coordinates,# pines ,Dominant vegetation,2nd dominant vegetation (if any),Pico,Pije,Cade,Abco,Nearest living adult (m),Location of adults (ie future seed source)
+7,,0**,Ceanothus palmeri,,,,,,,uphill
+9,,3,Ceanothus palmeri,Invasive grass,,1?,,2,,
+10,,6,Ceanothus palmeri,,,,4,2,,
+16,,1,Invasive grass,Ceanothus leucodermis,,1,,,29,
+20,,27,mixed chaparral/oak,,27?,,,,11,uphill and downhill
+24,,0,Ceanothus palmeri,Invasive grass,,,,,100,adjacent
+50,,0,Ceanothus palmeri,,,,,,132,
+51,,2,Invasive grass,Bare ground,,2?,,,30,
+52,,1,Invasive grass,Ceanothus leucodermis,,1?,,,163,
+53,,0,Invasive grass,Ceanothus leucodermis,,,,,85,downhill
+54,,0,Invasive grass,Ceanothus leucodermis,,,,,70,
+55,,3,Invasive grass,,,3,,,16,
+56,,0,Ceanothus palmeri,Ceanothus leucodermis,,,,,180,downhill
+57,,11,Ceanothus palmeri,Invasive grass,,1,,10,20,"uphill, downhill, adjacent"
+58,,0,Ceanothus palmeri,Ceanothus leucodermis,,,,,,
+59,,1,Ceanothus palmeri,Ceanothus leucodermis,,1?,,,60,
+60,,0**,Ceanothus palmeri,,,,,,,downhill and adjacent
+61,,75,Ceanothus palmeri,,,,71,4,220,
+alomar random,,52*,Ceanothus leucodermis,mixed chaparral,52,,,,90,
+random 1 & 2,,48*,Ceanothus palmeri,,48*,,,,30,

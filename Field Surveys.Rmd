@@ -1,0 +1,140 @@
+---
+title: "Field Survey Analysis"
+author: "Anne-Marie Parkinson"
+date: "September 25, 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+this code generates statistics for the field survey results section of the manuscript. Do note that not all values will be found here. Some were calculated by hand since hte sample size was so small. 
+# packages
+```{r}
+library(here)
+library(tidyverse)
+library(janitor)
+library(kableExtra)
+```
+
+
+# load data
+```{r}
+pines <- read_csv(here("Model Data Sheets and Code", "pine_surveys_for_R.csv")) %>% 
+  clean_names() %>% 
+  mutate(number_pines = parse_number(number_pines),
+         pico = parse_number(pico),
+         pije = parse_number(pije)) %>% 
+  mutate(pico = replace_na(pico, 0),
+         pije = replace_na(pije, 0),
+         cade = replace_na(cade, 0),
+         abco = replace_na(abco, 0))
+```
+
+# conifer regen
+```{r}
+
+################################ total number of saplings ################################ 
+tot_sap <- pines %>% 
+  summarise(tot = sum(number_pines))
+
+tot_sap %>% kable()
+
+#################################  percent of species ################################ 
+
+species <- pines %>% 
+  pivot_longer("pico": "abco",
+               names_to = "species",
+               values_to = "number_saplings") %>% 
+  group_by(species) %>% 
+  summarise(tot_species = sum(number_saplings),
+            percent = tot_species/230)
+
+species %>% kable()
+
+################################# number/percent of plots with no saplings ################################ 
+num_zero <- pines %>% 
+  group_by(number_pines) %>% 
+  count() %>% 
+  mutate(percent = n/20)
+
+num_zero %>% kable()
+
+################################# number/percent saplings grouped by classes ################################ 
+
+pines2 <- pines %>% 
+  mutate(class = case_when(
+    number_pines <= 0 ~ "Zero",
+    number_pines <= 10 ~ "<10",
+    number_pines <= 20 ~ "<20",
+    number_pines >= 20 ~ ">20")) %>% 
+  group_by(class) %>% 
+  count() %>% 
+  mutate(percent = n/20)
+
+pines2 %>% kable()
+
+
+```
+
+
+
+# dominant vegetation cover
+
+count how many plots have a veg type as the dominant veg type
+```{r}
+# tot primary dominant vegetation
+dom <- pines %>% 
+  group_by(dominant_vegetation) %>% 
+  count() %>% 
+  mutate(percent = n/20)
+
+dom %>% kable()
+
+# primary dominant vegetation by regeneration class
+dom_class <- pines %>% 
+  mutate(class = case_when(
+    number_pines <= 0 ~ "Zero",
+    number_pines <= 20 ~ "<20",
+    number_pines >= 20 ~ ">20")) %>% 
+  group_by(class, dominant_vegetation) %>% 
+  count() %>% 
+  mutate(percent = n/20)
+
+dom_class %>% kable()
+
+# secondary dom vegetation
+dom2 <- pines %>% 
+  group_by(x2nd_dominant_vegetation_if_any) %>% 
+  count() %>% 
+  mutate(percent = n/12) # only dividing by 12 bc 8 plots had no secondary dominant vegetation 
+
+dom2 %>% kable()
+
+# secondary dominant vegetation by regeneration class
+dom2_class <- pines %>% 
+  mutate(class = case_when(
+    number_pines <= 0 ~ "Zero",
+    number_pines <= 20 ~ "<20",
+    number_pines >= 20 ~ ">20")) %>% 
+  group_by(class, x2nd_dominant_vegetation_if_any) %>% 
+  count() %>% 
+  mutate(percent = n/12)
+
+dom2_class %>% kable()
+
+```
+
+
+
+
+
+
+
+
+
+
+
+

@@ -22,7 +22,7 @@ library(iml)
 library(ROCR)
 library(pROC)
 
-mcf <- read.csv('Zaca MCF variables for model.csv') %>% 
+mcf <- read.csv(here::here("Model Data Sheets and Code", 'Zaca MCF variables for model.csv')) %>% 
   mutate(mortality_qual= fct_relevel(mortality_qual, levels=c("High", "Moderate", "Low", "None"))) %>% 
   mutate(dnbr_qualitative = case_when(
     dnbr_2007 < 0.1 ~ "None",
@@ -214,6 +214,19 @@ ggplot(pico_sample_size, aes(x = mortality_qual, y = n, fill = mortality_type)) 
 
 ```
 MCF: Yah, dnbr is not a good index to use. Rdnbr is better at least when it comes to high severity and high mortality. Both dnbr and rdnbr over estimate moderate adn low mortlity and severely underestiamte stands with no mortality. Bc of this, we could make the assumption that pico stands with high rdnbr also have high mortality. 
+
+## Correlation
+
+```{r}
+mcf_corr <- mcf %>% 
+  select(dem_10m_zaca:TPI_five)
+correlation <- cor(mcf_corr$dem_10m_zaca, mcf_corr$TPI_five) # this works but can only compare 2 columns at a time
+cor(mcf_corr[dem_10m_zaca:TPI_five]) # wont work :/ 
+corr.test(mcf_corr[dem_10m_zaca:TPI_five]) # neither does this; library(psych)
+sapply(mcf_corr, cor, y=mcf_corr$sr) # kinda works but only compares correlatoins to one column at atime
+with(mcf_corr, cor(mcf_corr[dem_10m_zaca:TPI_five]))
+```
+idk why this aint workin man. I cleaned the environment and used the minimum number of packages/read_csv()  code necessary. its worked before! 
 
 ### Stepwise Variable Selection
 
