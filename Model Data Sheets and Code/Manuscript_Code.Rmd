@@ -15,8 +15,9 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(raster)
 library(randomForest)
-library(VSURF)
-library(ALEplot)
+#library(VSURF)
+library(ALEPlot)
+library(tuneRanger)
 
 setwd("E:/zaca/type_conversion")
 
@@ -51,9 +52,9 @@ preprocessLandsat("E:/zaca/type_conversion/Imagery")
 ```{r}
 
 #Directory will all pre-processed Landsat images
-setwd("E:/zaca/type_conversion/Imagery/Level2")
+setwd("E:/zaca/type_conversion/Imagery") #changed from: setwd("E:/zaca/type_conversion/Imagery/Level2")
 
-for(img in list.files(path = ".", "GTiff$")){
+for(img in list.files(path = ".", "tif$")){ # changed from for(img in list.files(path = ".", "GTiff$"))
   
   print(paste("Processing ", substr(img, 18, 25), sep = ""))
   
