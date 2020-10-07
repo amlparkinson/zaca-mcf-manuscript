@@ -293,45 +293,6 @@ annual_precip_30yr <- raster("E:/zaca/type_conversion/Environmental_Variables/Cl
 
 ## Mixed Conifer Forest
 
-###... Extract Values
-
-```{r}
-
-mixed_conifer_env <- extract()
-
-```
-
-###... Stepwise Variable Selection
-
-```{r}
-
-#Extract prediction and response variables
-mcf.predictors <- mcf_model[,2:ncol(mcf_model)]
-mcf.response <- mcf_model[,1]
-
-#Run stepwise variable selection algorithm
-mcf.vsurf <- VSURF(x = mcf.predictors, y = mcf.response)
-
-#Get names of selected variables
-names(mcf.predictors[mcf.vsurf$varselect.thres])
-names(mcf.predictors[mcf.vsurf$varselect.interp])
-names(mcf.predictors[mcf.vsurf$varselect.pred])
-
-```
-prediction step, variables selected:all
-
-interp step: variables se;ected: "vpd_aug"         "slope"           "rain"            "tmax"            "tmin_jan"        "sr" "aug_tmax2006"    "tmin_jan2007"    "precip_2006"     "aug_max_vpd2006" "ndmi_2006"       "evi_2006"  "tslf" 
-
-prediction step, variables selected: "vpd_aug"      "slope"        "rain"         "tmax"         "tmin_jan"     "sr"           "aug_tmax2006"  "tmin_jan2007" "ndmi_2006"    "evi_2006"     "tslf"        
-
-so climate variables are performing better than the weather variables (maybe bc the climate data is avail in higher resolution so there is more variability in values?)
-
-removed aug_max_vpd2006 and precip_2006 and reran VSURF
-
-interp step: "vpd_aug"      "slope"        "rain"         "tmax"         "tmin_jan"     "tmin_jan2007"
-
-predicition step: "vpd_aug"      "slope"        "rain"         "tmax"         "tmin_jan2007"
-
 ###... Load data
 
 the above code wouldnt work, so I got evi and min jan temp in the aca mcf mortality model results.rmd and loaded the old files ive been using
@@ -363,11 +324,20 @@ mcf <- read.csv(here::here("Model Data Sheets and Code", 'Zaca MCF variables for
   mutate(rdnbr_tc = as.factor(rdnbr_tc)) %>% 
   mutate(rdnbr_tc= fct_relevel(rdnbr_tc, levels=c("Not_TC", "TC"))) 
   
-mcf_tc_samplesize <- mcf %>% group_by(tc_mortality) %>%count() #type converted n = 99
-mcf_tc_samplesie <- mcf %>% group_by(rdnbr_tc) %>%dplyr::count() # type converted n = 55 (almost too small to use)
-mcf_tc_samplesie <- mcf %>% group_by(rdnbr_qualitative) %>%dplyr::count() # high=66, low= 585, moderate=272, type converted n = 84 
+
+```
+
+### ... summary statistics
+```{r}
+# sample sizes
+mcf_tc_samplesize <- mcf %>% group_by(tc_mortality) %>%count() #type converted manual estimates n = 99
+mcf_tc_samplesie <- mcf %>% group_by(rdnbr_tc) %>%dplyr::count() # rdnbr=1000 for type converted  n = 55 (almost too small to use)
+mcf_tc_samplesie <- mcf %>% group_by(rdnbr_qualitative) %>%dplyr::count() #rdnbr = 850:  high=66, low= 585, moderate=272, type converted n = 84 
+
+# acres by burn severity class an dtotal acres
 mcf_tc_samplesie <- mcf %>% group_by(rdnbr_qualitative) %>%dplyr::summarise(acres = sum(Shape_Area/4047)) %>%dplyr::summarise(tot_acres = sum(acres))
 
+# look at correlations/trends in potentially correlated variables
 ggplot(mcf, aes(x = rdnbr_tc, y = rdnbr_2007)) +geom_jitter(aes(color=tc_mortality))
 ggplot(mcf, aes(x=dnbr_2007, y=rdnbr_2007)) +geom_point(aes(color=tc_mortality)) + geom_hline(yintercept=875)
 ggplot(mcf, aes(ndmi_2006, y=evi_2006)) +geom_point()
@@ -382,7 +352,7 @@ mod6 <- lm(tmax~vpd_aug, data=mcf) # R2=0.95
 mod7 <- lm(cwd~vpd_aug, data=mcf) # R2=0.53
 mod8 <- lm(tmax~cwd, data=mcf) # R2=0.49
 
-
+# summary info on TSLF adn elevation for the manuscript
 mcf %>% dplyr::summarise(min = min(tslf),
                          mean = mean(tslf),
                          median = median(tslf),
@@ -391,8 +361,50 @@ mcf %>% dplyr::summarise(min = min(tslf),
                          mean_elev = mean(dem_10m_zaca),
                          max_elev = max(dem_10m_zaca))
 
+```
+surprisingly, far fewer variables are strongly correlated with each other and elevation than I would've have thought. 
+
+###... Extract Values
+
+```{r}
+
+mixed_conifer_env <- extract()
 
 ```
+
+###... Stepwise Variable Selection (VSURF)
+
+```{r}
+
+#Extract prediction and response variables
+mcf.predictors <- mcf_model[,2:ncol(mcf_model)]
+mcf.response <- mcf_model[,1]
+
+#Run stepwise variable selection algorithm
+mcf.vsurf <- VSURF(x = mcf.predictors, y = mcf.response)
+
+#Get names of selected variables
+names(mcf.predictors[mcf.vsurf$varselect.thres])
+names(mcf.predictors[mcf.vsurf$varselect.interp])
+names(mcf.predictors[mcf.vsurf$varselect.pred])
+
+```
+run 1 results: 
+prediction step, variables selected:all
+
+interp step: variables se;ected: "vpd_aug"         "slope"           "rain"            "tmax"            "tmin_jan"        "sr" "aug_tmax2006"    "tmin_jan2007"    "precip_2006"     "aug_max_vpd2006" "ndmi_2006"       "evi_2006"  "tslf" 
+
+prediction step, variables selected: "vpd_aug"      "slope"        "rain"         "tmax"         "tmin_jan"     "sr"           "aug_tmax2006"  "tmin_jan2007" "ndmi_2006"    "evi_2006"     "tslf"        
+
+so climate variables are performing better than the weather variables (maybe bc the climate data is avail in higher resolution so there is more variability in values?)
+
+*removed aug_max_vpd2006 and precip_2006 and reran VSURF*
+
+run 2 results: 
+interp step: "vpd_aug"      "slope"        "rain"         "tmax"         "tmin_jan"     "tmin_jan2007"
+
+predicition step: "vpd_aug"      "slope"        "rain"         "tmax"         "tmin_jan2007"
+
 
 ###... Tuning Parameters
 
@@ -404,25 +416,9 @@ tunRanger can also be used to tune for ntree, but studies have shown that after 
 ```{r}
 set.seed(1127)
 
-# select variables to be used in the model
-mcf_model <- mcf %>% 
-  dplyr::select(rdnbr_tc, tmin_jan2007, tmax, vpd_aug, cwd, rain, sr, slope, aspect_transformed, TWI, ndmi_2006, evi_2006, tslf) # not sure if fri and years so fire, whic sounds like Time Since Last Fire, are the same thing
-
-# run tuneRanger
-mcf_task <- makeClassifTask(data = mcf_model, target = "rdnbr_tc")
-tune_output <- tuneRanger(mcf_task, 
-                          measure = list(mmce), 
-                          num.trees = 1500, 
-                          tune.parameters = c("mtry", "min.node.size"))
-
-# recommended parameter settings
-# get best parameter values
-tune_output$model
-
-
-# 4 rdnbr classes
+# select variables to be used in the model 
 mcf_model3 <- mcf %>% 
-  dplyr::select(rdnbr_qualitative, tmin_jan2007, tmax, vpd_aug, cwd, rain, sr, slope, aspect_transformed, TWI, ndmi_2006, evi_2006, tslf) # not sure if fri and years so fire, whic sounds like Time Since Last Fire, are the same thing
+  dplyr::select(rdnbr_qualitative, tmin_jan2007, vpd_aug, cwd, tmax, rain, sr, slope, aspect_transformed, TWI, ndmi_2006, evi_2006, tslf) # not sure if fri and years so fire, whic sounds like Time Since Last Fire, are the same thing
 
 # run tuneRanger
 mcf_task <- makeClassifTask(data = mcf_model3, target = "rdnbr_qualitative")
@@ -462,6 +458,7 @@ mtry=12,min.node.size=5; stable VI!!; oob not great, TC has lots of confusion wi
 
 3 classes
 mtry=9,min.node.size=3; VI is mostly stable!
+
 ###... Random Forest
 ```{r}
 for (i in 1:10) {
@@ -484,6 +481,7 @@ varImpPlot(rfm)
 }
 
 ```
+
 ###... ROC/AUC
 ```{r}
 # code: https://stats.stackexchange.com/questions/188616/how-can-we-calculate-roc-auc-for-classification-algorithm-such-as-random-forest
@@ -491,22 +489,133 @@ rfm_roc <-  roc(mcf_model$rdnbr_tc, rfm$votes[,2])
 plot(rfm_roc)
 auc(rfm_roc)
 ```
+
+###... ALE
+```{r}
+mcf_ale <- mcf_model3[-which(names(mcf_model3) == "rdnbr_qualitative")]
+
+
+# predictors 
+nlm_predictor <- Predictor$new(rfm, data = mcf_ale, y = mcf$rdnbr_qualitative, type = "prob", class="NLM")
+high_predictor <- Predictor$new(rfm, data = mcf_ale, y = mcf$rdnbr_qualitative, type = "prob", class="High")
+tc_predictor <- Predictor$new(rfm, data = mcf_ale, y = mcf$rdnbr_qualitative, type = "prob", class="Type Converted")
+
+d = 7
+
+#ndmi
+nlm1 <- plot(FeatureEffect$new(nlm_predictor, feature = "ndmi_2006")) + ggtitle("ULM") + labs(x="") + theme_classic() + scale_y_continuous(lim = c(-0.15, 0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
+high1 <- plot(FeatureEffect$new(high_predictor, feature = "ndmi_2006")) + ggtitle("High") + labs(x="NDMI 2006") + theme_classic() + scale_y_continuous(lim = c(-0.15, 0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
+tc1 <- plot(FeatureEffect$new(tc_predictor, feature = "ndmi_2006")) + ggtitle("Type Converted") + labs(x="") + theme_classic() + scale_y_continuous(lim = c(-0.15, 0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
+ggarrange(nlm1, high1, tc1, nrow=1)
+ggsave(here::here("Graph Images", "mcf ndmi.jpg"))
+
+#solar radiation
+nlm2 <- plot(FeatureEffect$new(nlm_predictor, feature = "sr")) + ggtitle("ULM") + labs(x="") + theme_classic() + scale_y_continuous(lim = c(-0.15, 0.2)) +  theme(axis.text.x = element_text(angle = 15, hjust = 0.85)) #+ theme(plot.margin = unit(c(d,1,1,1), "lines"))
+high2 <- plot(FeatureEffect$new(high_predictor, feature = "sr")) + ggtitle("High") + labs(x="Solar Radiation") + theme_classic() + scale_y_continuous(lim = c(-0.15, 0.2)) +  theme(axis.text.x = element_text(angle = 15, hjust = 0.85))#+ theme(plot.margin = unit(c(d,1,1,1), "lines"))
+tc2 <- plot(FeatureEffect$new(tc_predictor, feature = "sr")) + ggtitle("Type Converted") + labs(x="") + theme_classic() + scale_y_continuous(lim = c(-0.15, 0.2)) +  theme(axis.text.x = element_text(angle = 15, hjust = 0.85))#+ theme(plot.margin = unit(c(d,1,1,1), "lines"))
+ggarrange(nlm2, high2, tc2, nrow=1)
+ggsave(here::here("Graph Images", "mcf sr.jpg"))
+
+#precip
+nlm3 <- plot(FeatureEffect$new(nlm_predictor, feature = "rain")) + ggtitle("ULM") + labs(x="") + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) #+ theme(plot.margin = unit(c(d,1,1,1), "lines"))
+high3 <- plot(FeatureEffect$new(high_predictor, feature = "rain")) + ggtitle("High") + labs(x="Annual Precipitation") + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2))#+ theme(plot.margin = unit(c(d,1,1,1), "lines"))
+tc3 <- plot(FeatureEffect$new(tc_predictor, feature = "rain")) + ggtitle("Type Converted") + labs(x="") + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2))#+ theme(plot.margin = unit(c(d,1,1,1), "lines"))
+ggarrange(nlm3, high3, tc3, nrow=1)
+ggsave(here::here("Graph Images", "mcf precip.jpg"))
+
+#tmax
+nlm4 <- plot(FeatureEffect$new(nlm_predictor, feature = "tmax")) + ggtitle("ULM") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) # #+ theme(plot.margin = unit(c(d,1,1,1), "lines"))
+high4 <- plot(FeatureEffect$new(high_predictor, feature = "tmax")) + ggtitle("High") + labs(x="Max August Temp")+ theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) # #+ theme(plot.margin = unit(c(d,1,1,1), "lines"))
+tc4 <- plot(FeatureEffect$new(tc_predictor, feature = "tmax")) + ggtitle("Type Converted") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) # #+ theme(plot.margin = unit(c(d,1,1,1), "lines"))
+ggarrange(nlm4, high4, tc4, nrow=1)
+ggsave(here::here("Graph Images", "mcf tmax.jpg"))
+
+#tmin jan 2007
+nlm5 <- plot(FeatureEffect$new(nlm_predictor, feature = "tmin_jan2007")) + ggtitle("ULM") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) # #+ theme(plot.margin = unit(c(d,1,1,1), "lines"))
+high5 <- plot(FeatureEffect$new(high_predictor, feature = "tmin_jan2007")) + ggtitle("High") + labs(x="Min 2007 January Temp")+ theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) # + theme(plot.margin = unit(c(d,1,1,1), "lines"))
+tc5 <- plot(FeatureEffect$new(tc_predictor, feature = "tmin_jan2007")) + ggtitle("Type Converted") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) # + theme(plot.margin = unit(c(d,1,1,1), "lines"))
+ggarrange(nlm5, high5, tc5, nrow=1)
+ggsave(here::here("Graph Images", "mcf tmin_jan2007.jpg"))
+
+#vpd aug
+nlm6 <- plot(FeatureEffect$new(nlm_predictor, feature = "vpd_aug")) + ggtitle("ULM") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) # + theme(plot.margin = unit(c(d,1,1,1), "lines"))
+high6 <- plot(FeatureEffect$new(high_predictor, feature = "vpd_aug")) + ggtitle("High") + labs(x="Max August VPD")+ theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) # + theme(plot.margin = unit(c(d,1,1,1), "lines"))
+tc6 <- plot(FeatureEffect$new(tc_predictor, feature = "vpd_aug")) + ggtitle("Type Converted") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) # + theme(plot.margin = unit(c(d,1,1,1), "lines"))
+ggarrange(nlm6, high6, tc6, nrow=1)
+ggsave(here::here("Graph Images", "mcf vpd_aug.jpg"))
+
+#cwd
+nlm7 <- plot(FeatureEffect$new(nlm_predictor, feature = "cwd")) + ggtitle("ULM") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) # + theme(plot.margin = unit(c(d,1,1,1), "lines"))
+high7 <- plot(FeatureEffect$new(high_predictor, feature = "cwd")) + ggtitle("High") + labs(x="CWD")+ theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) # + theme(plot.margin = unit(c(d,1,1,1), "lines"))
+tc7 <- plot(FeatureEffect$new(tc_predictor, feature = "cwd")) + ggtitle("Type Converted") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) # + theme(plot.margin = unit(c(d,1,1,1), "lines"))
+ggarrange(nlm7, high7, tc7, nrow=1)
+ggsave(here::here("Graph Images", "mcf cwd.jpg"))
+
+#evi
+nlm8 <- plot(FeatureEffect$new(nlm_predictor, feature = "evi_2006")) + ggtitle("ULM") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) # + theme(plot.margin = unit(c(d,1,1,1), "lines"))
+high8 <- plot(FeatureEffect$new(high_predictor, feature = "evi_2006")) + ggtitle("High") + labs(x="2006 EVI")+ theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) # + theme(plot.margin = unit(c(d,1,1,1), "lines"))
+tc8 <- plot(FeatureEffect$new(tc_predictor, feature = "evi_2006")) + ggtitle("Type Converted") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) # + theme(plot.margin = unit(c(d,1,1,1), "lines"))
+ggarrange(nlm8, high8, tc8, nrow=1)
+ggsave(here::here("Graph Images", "mcf evi.jpg"))
+
+#slope
+nlm9 <- plot(FeatureEffect$new(nlm_predictor, feature = "slope")) + ggtitle("ULM") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) # + theme(plot.margin = unit(c(d,1,1,1), "lines"))
+high9 <- plot(FeatureEffect$new(high_predictor, feature = "slope")) + ggtitle("High") + labs(x="Slope")+ theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) # + theme(plot.margin = unit(c(d,1,1,1), "lines"))
+tc9 <- plot(FeatureEffect$new(tc_predictor, feature = "slope")) + ggtitle("Type Converted") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) # + theme(plot.margin = unit(c(d,1,1,1), "lines"))
+ggarrange(nlm9, high9, tc9, nrow=1)
+ggsave(here::here("Graph Images", "mcf slope.jpg"))
+
+#tslf
+nlm10 <- plot(FeatureEffect$new(nlm_predictor, feature = "tslf")) + ggtitle("ULM") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) # + theme(plot.margin = unit(c(d,1,1,1), "lines"))
+high10 <- plot(FeatureEffect$new(high_predictor, feature = "tslf")) + ggtitle("High") + labs(x="TSLF")+ theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) # + theme(plot.margin = unit(c(d,1,1,1), "lines"))
+tc10 <- plot(FeatureEffect$new(tc_predictor, feature = "tslf")) + ggtitle("Type Converted") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) # + theme(plot.margin = unit(c(d,1,1,1), "lines"))
+ggarrange(nlm10, high10, tc10, nrow=1)
+ggsave(here::here("Graph Images", "mcf tslf.jpg"))
+
+#twi
+nlm11 <- plot(FeatureEffect$new(nlm_predictor, feature = "TWI")) + ggtitle("ULM") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) # + theme(plot.margin = unit(c(d,1,1,1), "lines"))
+high11 <- plot(FeatureEffect$new(high_predictor, feature = "TWI")) + ggtitle("High") + labs(x="TWI")+ theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) # + theme(plot.margin = unit(c(d,1,1,1), "lines"))
+tc11 <- plot(FeatureEffect$new(tc_predictor, feature = "TWI")) + ggtitle("Type Converted") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) # + theme(plot.margin = unit(c(d,1,1,1), "lines"))
+ggarrange(nlm11, high11, tc11, nrow=1)
+ggsave(here::here("Graph Images", "mcf twi.jpg"))
+
+#aspect
+nlm12 <- plot(FeatureEffect$new(nlm_predictor, feature = "aspect_transformed")) + ggtitle("ULM") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) # + theme(plot.margin = unit(c(d,1,1,1), "lines"))
+high12 <- plot(FeatureEffect$new(high_predictor, feature = "aspect_transformed")) + ggtitle("High") + labs(x="Aspect")+ theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) # + theme(plot.margin = unit(c(d,1,1,1), "lines"))
+tc12 <- plot(FeatureEffect$new(tc_predictor, feature = "aspect_transformed")) + ggtitle("Type Converted") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) # + theme(plot.margin = unit(c(d,1,1,1), "lines"))
+ggarrange(nlm12, high12, tc12, nrow=1)
+ggsave(here::here("Graph Images", "mcf Aspect.jpg"))
+
+ggarrange(nlm1, high1, tc1, tc1,nlm2, high2, tc2,tc1,nlm3, high3, tc3,tc1, nrow =3, ncol =4)
+ggsave(here::here("Graph Images", "mcf ndm_sr_precip6.jpg"))
+
+#ggarrange(nlm5, high5, tc5, nlm6, high6, tc6, nlm7, high7, tc7)
+
+
+# plot all variables in the model (for just one mortality class): had to specify all the individual variables in the model to plot from the train data frame
+# all_rfm_variables <- FeatureEffects$new(high_predictor, method = "ale", features = c('tmax', 'vpd_aug', 'cwd', 'rain', 'insolation', 'slope', 'aspect_transformed', 'TWI', 'ndmi_2006', 'evi_2006', 'years_since_burn', 'tmin_jan2007'))
+# all_rfm_variables$plot()
+# ggsave("ale4.jpg", height = 9, width = 9)
+
+```
+
+
+
 ###... ALE
 ```{r}
 
 mcf_ale <- mcf_model3[-which(names(mcf_model3) == "rdnbr_qualitative")]
 
-
 # predictors 
-nlm_predictor <- Predictor$new(rfm, data = mcf_ale, y = mcf_ale$rdnbr_qualitative, type = "prob", class="NLM")
+nlm_predictor <- Predictor$new(rfm, data = mcf_ale, y = mcf_ale$rdnbr_qualitative, type = "prob", class="ULM")
 high_predictor <- Predictor$new(rfm, data = mcf_ale, y = mcf_ale$rdnbr_qualitative, type = "prob", class="High")
 tc_predictor <- Predictor$new(rfm, data = mcf_ale, y = mcf_ale$rdnbr_qualitative, type = "prob", class="Type Converted")
 
 d = 7
 #ndmi
-nlm1 <- plot(FeatureEffect$new(nlm_predictor, feature = "ndmi_2006")) + ggtitle("") + labs(x="NDMI 2006") + theme_classic() + scale_y_continuous(lim = c(-0.15, 0.2)) #+ theme(plot.margin = unit(c(d,1,1,1), "lines"))
-high1 <- plot(FeatureEffect$new(high_predictor, feature = "ndmi_2006")) + ggtitle("") + labs(x="NDMI 2006") + theme_classic() + scale_y_continuous(lim = c(-0.15, 0.2)) #+ themet.margin = unit(c(d,1,1,1), "lines"))
-tc1 <- plot(FeatureEffect$new(tc_predictor, feature = "ndmi_2006")) + ggtitle("") + labs(x="NDMI 2006") + theme_classic() + scale_y_continuous(lim = c(-0.15, 0.2)) #+ themet.margin = unit(c(d,1,1,1), "lines"))
+nlm1 <- plot(FeatureEffect$new(nlm_predictor, feature = "ndmi_2006")) + ggtitle("") + labs(x="NDMI 2006") + theme_classic() + scale_y_continuous(lim = c(-0.15, 0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
+high1 <- plot(FeatureEffect$new(high_predictor, feature = "ndmi_2006")) + ggtitle("") + labs(x="NDMI 2006") + theme_classic() + scale_y_continuous(lim = c(-0.15, 0.2)) + themet.margin = unit(c(d,1,1,1), "lines"))
+tc1 <- plot(FeatureEffect$new(tc_predictor, feature = "ndmi_2006")) + ggtitle("") + labs(x="NDMI 2006") + theme_classic() + scale_y_continuous(lim = c(-0.15, 0.2)) + themet.margin = unit(c(d,1,1,1), "lines"))
 ggarrange(nlm1, high1, tc1, nrow=1)
 ##ggsave(here::here("Graph Images", "mcf ndmi.jpg"))
 #theme (panel.background = element_rect(width = 5))
@@ -547,10 +656,10 @@ ggarrange(nlm, high, tc, nrow=1)
 #ggsave(here::here("Graph Images", "mcf tmin_jan2007.jpg"))
 
 #vpd aug
-nlm7 <- plot(FeatureEffect$new(nlm_predictor, feature = "vpd_aug")) + ggtitle("") + labs(x="Max August VPD")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) #+ themet.margin = unit(c(d,1,1,1), "lines"))
-high7 <- plot(FeatureEffect$new(high_predictor, feature = "vpd_aug")) + ggtitle("") + labs(x="Max August VPD")+ theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) #+ themet.margin = unit(c(d,1,1,1), "lines"))
-tc7 <- plot(FeatureEffect$new(tc_predictor, feature = "vpd_aug")) + ggtitle("") + labs(x="Max August VPD")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) #+ themet.margin = unit(c(d,1,1,1), "lines"))
-ggarrange(nlm, high, tc, nrow=1)
+nlm7 <- plot(FeatureEffect$new(nlm_predictor, feature = "vpd_aug")) + ggtitle("") + labs(x="Max August VPD")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2))# + theme(plot.margin = unit(c(d,1,1,1), "lines"))
+high7 <- plot(FeatureEffect$new(high_predictor, feature = "vpd_aug")) + ggtitle("") + labs(x="Max August VPD")+ theme_classic() + scale_y_continuous(lim = c(-0.15,0.2))# + theme(plot.margin = unit(c(d,1,1,1), "lines"))
+tc7 <- plot(FeatureEffect$new(tc_predictor, feature = "vpd_aug")) + ggtitle("") + labs(x="Max August VPD")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) #+ theme(plot.margin = unit(c(d,1,1,1), "lines"))
+ggarrange(nlm7, high7, tc7, nrow=1)
 #ggsave(here::here("Graph Images", "mcf vpd_aug.jpg"))
 
 #cwd
@@ -589,13 +698,13 @@ ggarrange(nlm, high, tc, nrow=1)
 #ggsave(here::here("Graph Images", "mcf Aspect.jpg"))
 
 ggarrange(nlm1, nlm2,nlm3,nlm4,nlm5,nlm6,nlm7,nlm8,nlm9,nlm10,nlm11,nlm12, nrow = 3, ncol=4)
-ggsave(here::here("Graph Images", "mcf all ulm.jpg"), width=8, height = 8)
+ggsave(here::here("Graph Images", "mcf all ulm_no sampsize.jpg"), width=8, height = 8)
 
 ggarrange(high1,high2,high3,high4,high5,high6,high7,high8,high9,high10,high11,high12, nrow=3, ncol=4)
-ggsave(here::here("Graph Images", "mcf all high.jpg"), width=8, height = 8)
+#ggsave(here::here("Graph Images", "mcf all high_no sampsize.jpg"), width=8, height = 8)
 
 ggarrange(tc1,tc2,tc3,tc4,tc5,tc6,tc7,tc8,tc9,tc10,tc11,tc12, nrow=3, ncol=4)
-ggsave(here::here("Graph Images", "mcf all tc.jpg"), width=8, height = 8)
+ggsave(here::here("Graph Images", "mcf all tc_no sampsize.jpg"), width=8, height = 8)
 
 # plot all variables in the model (for just one mortality class): had to specify all the individual variables in the model to plot from the train data frame
 # all_rfm_variables <- FeatureEffects$new(tc_predictor, method = "ale", features = c('tmax', 'vpd_aug', 'cwd', 'rain', 'sr', 'slope', 'aspect_transformed', 'TWI', 'ndmi_2006', 'evi_2006', 'tslf', 'tmin_jan2007'))
@@ -653,7 +762,7 @@ interesting graphs for evi and ndmi: high evi (which represents denser veg) is a
 ```{r}
 pico <- read_csv("coulter_env_modified.csv") %>% 
   mutate(rdnbr_qualitative = case_when(
-    rdnbr_2007 < 640 ~ "NLM",
+    rdnbr_2007 <= 640 ~ "NLM",
     rdnbr_2007 < 850 ~ "High",
     rdnbr_2007 >= 850 ~ "Type Converted")) %>%
   mutate(rdnbr_qualitative = as.factor(rdnbr_qualitative),
@@ -771,14 +880,14 @@ pico_ale <- pico_model3[-which(names(pico_model3) == "rdnbr_qualitative")]
 
 
 # predictors 
-nlm_predictor <- Predictor$new(rfm, data = pico_ale, y = pico_ale$rdnbr_qualitative, type = "prob", class="NLM")
-high_predictor <- Predictor$new(rfm, data = pico_ale, y = pico_ale$rdnbr_qualitative, type = "prob", class="High")
-tc_predictor <- Predictor$new(rfm, data = pico_ale, y = pico_ale$rdnbr_qualitative, type = "prob", class="Type Converted")
+nlm_predictor <- Predictor$new(rfm, data = pico_ale, y = pico$rdnbr_qualitative, type = "prob", class="NLM")
+high_predictor <- Predictor$new(rfm, data = pico_ale, y = pico$rdnbr_qualitative, type = "prob", class="High")
+tc_predictor <- Predictor$new(rfm, data = pico_ale, y = pico$rdnbr_qualitative, type = "prob", class="Type Converted")
 
 d = 7
 
 #ndmi
-nlm <- plot(FeatureEffect$new(nlm_predictor, feature = "ndmi_2006")) + ggtitle("NLM") + labs(x="") + theme_classic() + scale_y_continuous(lim = c(-0.15, 0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
+nlm <- plot(FeatureEffect$new(nlm_predictor, feature = "ndmi_2006")) + ggtitle("ULM") + labs(x="") + theme_classic() + scale_y_continuous(lim = c(-0.15, 0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
 high <- plot(FeatureEffect$new(high_predictor, feature = "ndmi_2006")) + ggtitle("High") + labs(x="NDMI 2006") + theme_classic() + scale_y_continuous(lim = c(-0.15, 0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
 tc <- plot(FeatureEffect$new(tc_predictor, feature = "ndmi_2006")) + ggtitle("Type Converted") + labs(x="") + theme_classic() + scale_y_continuous(lim = c(-0.15, 0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
 ggarrange(nlm, high, tc, nrow=1)
@@ -786,77 +895,77 @@ ggsave(here::here("Graph Images", "pico ndmi.jpg"))
 #theme (panel.background = element_rect(width = 5))
 
 #solar radiation
-nlm <- plot(FeatureEffect$new(nlm_predictor, feature = "insolation")) + ggtitle("NLM") + labs(x="") + theme_classic() + scale_y_continuous(lim = c(-0.15, 0.2)) +  theme(axis.text.x = element_text(angle = 15, hjust = 0.85)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
+nlm <- plot(FeatureEffect$new(nlm_predictor, feature = "insolation")) + ggtitle("ULM") + labs(x="") + theme_classic() + scale_y_continuous(lim = c(-0.15, 0.2)) +  theme(axis.text.x = element_text(angle = 15, hjust = 0.85)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
 high <- plot(FeatureEffect$new(high_predictor, feature = "insolation")) + ggtitle("High") + labs(x="Solar Radiation") + theme_classic() + scale_y_continuous(lim = c(-0.15, 0.2)) +  theme(axis.text.x = element_text(angle = 15, hjust = 0.85))+ theme(plot.margin = unit(c(d,1,1,1), "lines"))
 tc <- plot(FeatureEffect$new(tc_predictor, feature = "insolation")) + ggtitle("Type Converted") + labs(x="") + theme_classic() + scale_y_continuous(lim = c(-0.15, 0.2)) +  theme(axis.text.x = element_text(angle = 15, hjust = 0.85))+ theme(plot.margin = unit(c(d,1,1,1), "lines"))
 ggarrange(nlm, high, tc, nrow=1)
 ggsave(here::here("Graph Images", "pico sr.jpg"))
 
 #precip
-nlm <- plot(FeatureEffect$new(nlm_predictor, feature = "rain")) + ggtitle("NLM") + labs(x="") + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
+nlm <- plot(FeatureEffect$new(nlm_predictor, feature = "rain")) + ggtitle("ULM") + labs(x="") + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
 high <- plot(FeatureEffect$new(high_predictor, feature = "rain")) + ggtitle("High") + labs(x="Annual Precipitation") + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2))+ theme(plot.margin = unit(c(d,1,1,1), "lines"))
 tc <- plot(FeatureEffect$new(tc_predictor, feature = "rain")) + ggtitle("Type Converted") + labs(x="") + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2))+ theme(plot.margin = unit(c(d,1,1,1), "lines"))
 ggarrange(nlm, high, tc, nrow=1)
 ggsave(here::here("Graph Images", "pico precip.jpg"))
 
 #tmax
-nlm <- plot(FeatureEffect$new(nlm_predictor, feature = "tmax")) + ggtitle("NLM") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
+nlm <- plot(FeatureEffect$new(nlm_predictor, feature = "tmax")) + ggtitle("ULM") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
 high <- plot(FeatureEffect$new(high_predictor, feature = "tmax")) + ggtitle("High") + labs(x="Max August Temp")+ theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
 tc <- plot(FeatureEffect$new(tc_predictor, feature = "tmax")) + ggtitle("Type Converted") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
 ggarrange(nlm, high, tc, nrow=1)
 ggsave(here::here("Graph Images", "pico tmax.jpg"))
 
 #tmin jan 2007
-nlm <- plot(FeatureEffect$new(nlm_predictor, feature = "tmin_jan2007")) + ggtitle("NLM") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
+nlm <- plot(FeatureEffect$new(nlm_predictor, feature = "tmin_jan2007")) + ggtitle("ULM") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
 high <- plot(FeatureEffect$new(high_predictor, feature = "tmin_jan2007")) + ggtitle("High") + labs(x="Min 2007 January Temp")+ theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
 tc <- plot(FeatureEffect$new(tc_predictor, feature = "tmin_jan2007")) + ggtitle("Type Converted") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
 ggarrange(nlm, high, tc, nrow=1)
 ggsave(here::here("Graph Images", "pico tmin_jan2007.jpg"))
 
 #vpd aug
-nlm <- plot(FeatureEffect$new(nlm_predictor, feature = "vpd_aug")) + ggtitle("NLM") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
+nlm <- plot(FeatureEffect$new(nlm_predictor, feature = "vpd_aug")) + ggtitle("ULM") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
 high <- plot(FeatureEffect$new(high_predictor, feature = "vpd_aug")) + ggtitle("High") + labs(x="Max August VPD")+ theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
 tc <- plot(FeatureEffect$new(tc_predictor, feature = "vpd_aug")) + ggtitle("Type Converted") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
 ggarrange(nlm, high, tc, nrow=1)
 ggsave(here::here("Graph Images", "pico vpd_aug.jpg"))
 
 #cwd
-nlm <- plot(FeatureEffect$new(nlm_predictor, feature = "cwd")) + ggtitle("NLM") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
+nlm <- plot(FeatureEffect$new(nlm_predictor, feature = "cwd")) + ggtitle("ULM") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
 high <- plot(FeatureEffect$new(high_predictor, feature = "cwd")) + ggtitle("High") + labs(x="CWD")+ theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
 tc <- plot(FeatureEffect$new(tc_predictor, feature = "cwd")) + ggtitle("Type Converted") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
 ggarrange(nlm, high, tc, nrow=1)
 ggsave(here::here("Graph Images", "pico cwd.jpg"))
 
 #evi
-nlm <- plot(FeatureEffect$new(nlm_predictor, feature = "evi_2006")) + ggtitle("NLM") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
+nlm <- plot(FeatureEffect$new(nlm_predictor, feature = "evi_2006")) + ggtitle("ULM") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
 high <- plot(FeatureEffect$new(high_predictor, feature = "evi_2006")) + ggtitle("High") + labs(x="2006 EVI")+ theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
 tc <- plot(FeatureEffect$new(tc_predictor, feature = "evi_2006")) + ggtitle("Type Converted") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
 ggarrange(nlm, high, tc, nrow=1)
 ggsave(here::here("Graph Images", "pico evi.jpg"))
 
 #slope
-nlm <- plot(FeatureEffect$new(nlm_predictor, feature = "slope")) + ggtitle("NLM") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
+nlm <- plot(FeatureEffect$new(nlm_predictor, feature = "slope")) + ggtitle("ULM") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
 high <- plot(FeatureEffect$new(high_predictor, feature = "slope")) + ggtitle("High") + labs(x="Slope")+ theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
 tc <- plot(FeatureEffect$new(tc_predictor, feature = "slope")) + ggtitle("Type Converted") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
 ggarrange(nlm, high, tc, nrow=1)
 ggsave(here::here("Graph Images", "pico slope.jpg"))
 
 #tslf
-nlm <- plot(FeatureEffect$new(nlm_predictor, feature = "years_since_burn")) + ggtitle("NLM") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
+nlm <- plot(FeatureEffect$new(nlm_predictor, feature = "years_since_burn")) + ggtitle("ULM") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
 high <- plot(FeatureEffect$new(high_predictor, feature = "years_since_burn")) + ggtitle("High") + labs(x="TSLF")+ theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
 tc <- plot(FeatureEffect$new(tc_predictor, feature = "years_since_burn")) + ggtitle("Type Converted") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
 ggarrange(nlm, high, tc, nrow=1)
 ggsave(here::here("Graph Images", "pico tslf.jpg"))
 
 #twi
-nlm <- plot(FeatureEffect$new(nlm_predictor, feature = "TWI")) + ggtitle("NLM") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
+nlm <- plot(FeatureEffect$new(nlm_predictor, feature = "TWI")) + ggtitle("ULM") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
 high <- plot(FeatureEffect$new(high_predictor, feature = "TWI")) + ggtitle("High") + labs(x="TWI")+ theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
 tc <- plot(FeatureEffect$new(tc_predictor, feature = "TWI")) + ggtitle("Type Converted") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
 ggarrange(nlm, high, tc, nrow=1)
 ggsave(here::here("Graph Images", "pico twi.jpg"))
 
 #aspect
-nlm <- plot(FeatureEffect$new(nlm_predictor, feature = "aspect_transformed")) + ggtitle("NLM") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
+nlm <- plot(FeatureEffect$new(nlm_predictor, feature = "aspect_transformed")) + ggtitle("ULM") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
 high <- plot(FeatureEffect$new(high_predictor, feature = "aspect_transformed")) + ggtitle("High") + labs(x="Aspect")+ theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
 tc <- plot(FeatureEffect$new(tc_predictor, feature = "aspect_transformed")) + ggtitle("Type Converted") + labs(x="")  + theme_classic() + scale_y_continuous(lim = c(-0.15,0.2)) + theme(plot.margin = unit(c(d,1,1,1), "lines"))
 ggarrange(nlm, high, tc, nrow=1)
