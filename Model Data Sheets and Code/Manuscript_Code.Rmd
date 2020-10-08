@@ -800,6 +800,26 @@ pico_elev <- pico %>% dplyr::summarise(elev_mean = mean(dem),
 
 ```
 
+###... Stepwise Variable Selection (VSURF)
+
+```{r}
+
+#Extract prediction and response variables
+pico.predictors <- pico_model[,2:ncol(pico_model)]
+pico.response <- pico_model[,1]
+
+#Run stepwise variable selection algorithm
+pico.vsurf <- VSURF(x = pico.predictors, y = pico.response)
+
+#Get names of selected variables
+names(pico.predictors[pico.vsurf$varselect.thres])
+names(pico.predictors[pico.vsurf$varselect.interp])
+names(pico.predictors[pico$varselect.pred])
+
+```
+get error for some reason, but not with the MCF df :(
+
+
 ###... Tuning Parameters
 
 source: https://arxiv.org/pdf/1804.03515.pdf (see digital page 9 for tuneRanger)
@@ -810,7 +830,7 @@ options for the measure function: https://mlr.mlr-org.com/articles/tutorial/meas
 set.seed(1127)
 
 # select variables to be used in the model
-pico_model2 <- pico %>% dplyr::select(rdnbr_tc, tmax, vpd_aug, cwd, rain, insolation, slope, aspect_transformed, TWI, ndmi_2006, evi_2006, years_since_burn, tmin_jan2007, ndmi_2006) 
+pico_model <- pico %>% dplyr::select(rdnbr_qualitative, tmax, vpd_aug, cwd, rain, insolation, slope, aspect_transformed, TWI, ndmi_2006, evi_2006, years_since_burn, tmin_jan2007, ndmi_2006) 
 
 # run tuneRanger
 pico_task <- makeClassifTask(data = pico_model2, target = "rdnbr_tc")
